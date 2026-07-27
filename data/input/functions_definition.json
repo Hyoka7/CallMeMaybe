@@ -67,5 +67,17 @@
     "returns": {
       "type": "string"
     }
+  },
+  {
+    "name": "fn_is_capitalized",
+    "description": "Judge if a given string is capitalized or not",
+    "parameters": {
+      "source_string": {
+        "type": "string"
+      }
+    },
+    "returns": {
+      "type": "boolean"
+    }
   }
 ]

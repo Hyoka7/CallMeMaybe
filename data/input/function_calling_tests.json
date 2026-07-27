@@ -31,5 +31,8 @@
   },
   {
     "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'"
+  },
+  {
+    "prompt": "Is the string 'HelloWorld' is capitalized?"
   }
 ]
