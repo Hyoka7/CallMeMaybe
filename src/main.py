@@ -3,6 +3,7 @@ from src.build_tokenn import encode_funcs
 from src.cli import parse_args
 from src.function_selector import funcjson_returner, function_selector
 from src.loader import load_functions, load_prompts
+from src.params_maker import params_maker
 from src.prompt import build_func_select_prompt, build_param_prompt
 
 
@@ -24,20 +25,10 @@ def main() -> None:
         selected = model.decode(func_id)
         print(f"{pro.prompt} -> {selected}")
         json = funcjson_returner(selected, funcs)
-        print(json)
         parampro = build_param_prompt(json, pro.prompt)
-        paramproids = model.encode(parampro)[0].tolist()
-        generated_tokens = []
-        for _ in range(10):
-            logits = model.get_logits_from_input_ids(paramproids)
-            next_token = max(
-                range(len(logits)),
-                key=logits.__getitem__,
-            )
-            paramproids.append(next_token)
-            generated_tokens.append(next_token)
-        print(model.decode(generated_tokens))
-        print()
+        parampro_id = model.encode(parampro)[0].tolist()
+        param = params_maker(model, parampro_id, json)
+        print(param)
 
 
 if __name__ == "__main__":
