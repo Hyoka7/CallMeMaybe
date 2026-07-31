@@ -65,6 +65,33 @@ class ParamsMakerTests(unittest.TestCase):
 
         self.assertEqual(json.loads(result), {"name": "shrek"})
 
+    def test_multi_character_string_token(self) -> None:
+        function = JsonFunction(
+            name="fn_greet",
+            description="Greet a person.",
+            parameters={"name": {"type": "string"}},
+            returns={"type": "string"},
+        )
+        generated: Iterator[int] = iter([127, ord('"')])
+        model = Mock()
+        model.encode.side_effect = make_encoded_text
+        model.decode.side_effect = lambda token_ids: "".join(
+            "shrek" if token_id == 127 else chr(token_id)
+            for token_id in token_ids
+        )
+
+        def get_logits(_: list[int]) -> list[float]:
+            token_id = next(generated)
+            logits = [float("-inf")] * 128
+            logits[token_id] = 1.0
+            return logits
+
+        model.get_logits_from_input_ids.side_effect = get_logits
+
+        result = params_maker(model, [1], function)
+
+        self.assertEqual(json.loads(result), {"name": "shrek"})
+
     def test_boolean_parameter(self) -> None:
         function = JsonFunction(
             name="fn_is_enabled",

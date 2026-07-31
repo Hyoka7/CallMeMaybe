@@ -1,9 +1,10 @@
 import json
-import string
 
 from llm_sdk import Small_LLM_Model
 from src.build_tokenn import allow_token
 from src.model import JsonFunction
+
+STRING_TOKEN_CACHE: dict[object, set[int]] = {}
 
 
 def append_json_token(
@@ -23,13 +24,27 @@ def build_num_token_list(llm: Small_LLM_Model):
     return tokens
 
 
-def build_chr_token_list(llm: Small_LLM_Model):
+def is_safe_string_token(token_text: str) -> bool:
+    if not token_text:
+        return False
+    return all(
+        character.isprintable() and character not in {'"', "\\", "\ufffd"}
+        for character in token_text
+    )
+
+
+def build_chr_token_list(llm: Small_LLM_Model, vocab_size: int) -> set[int]:
+    cached = STRING_TOKEN_CACHE.get(llm)
+    if cached is not None:
+        return cached
+
     tokens = set()
-    alphas = string.ascii_letters
-    for c in alphas:
-        chr_token = llm.encode(c)[0].tolist()
-        if len(chr_token) == 1:
-            tokens.add(chr_token[0])
+    for token_id in range(vocab_size):
+        token_text = llm.decode([token_id])
+        if is_safe_string_token(token_text):
+            tokens.add(token_id)
+
+    STRING_TOKEN_CACHE[llm] = tokens
     return tokens
 
 
@@ -68,10 +83,10 @@ def params_maker(llm: Small_LLM_Model, prompt_ids: list[int], func: JsonFunction
         elif types["type"] == "string":
             append_json_token(llm, prompt_ids, output, '"')
             cur_tokens = []
-            allowed_tokens = build_chr_token_list(llm)
+            logits = llm.get_logits_from_input_ids(prompt_ids)
+            allowed_tokens = build_chr_token_list(llm, len(logits))
             end_tokens = llm.encode('"')[0].tolist()[0]
             while True:
-                logits = llm.get_logits_from_input_ids(prompt_ids)
                 candicates = allowed_tokens | {end_tokens}
                 cand_id = max(
                     candicates,
@@ -82,6 +97,7 @@ def params_maker(llm: Small_LLM_Model, prompt_ids: list[int], func: JsonFunction
                 prompt_ids.append(cand_id)
                 output.append(cand_id)
                 cur_tokens.append(cand_id)
+                logits = llm.get_logits_from_input_ids(prompt_ids)
             append_json_token(llm, prompt_ids, output, '"')
         elif types["type"] == "boolean":
             boolean_tokens = [

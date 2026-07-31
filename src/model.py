@@ -50,6 +50,12 @@ class Prompt(BaseModel):
             raise ValueError("Required key 'prompt' is missing")
         return data
 
+class JsonResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prompt: str
+    name: str
+    parameters: dict[str, int | float | str | bool]
+
 
 class PromptInput(BaseModel):
     model_config = ConfigDict(extra="forbid")

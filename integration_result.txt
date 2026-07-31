@@ -1,0 +1,26 @@
+6 functions loaded
+12 prompts loaded
+What is the sum of 2 and 3? -> fn_add_numbers
+{"a": 2,"b": 3}
+What is the sum of 265 and 345? -> fn_add_numbers
+{"a": 265,"b": 345}
+Greet shrek -> fn_greet
+{"name": "G"}
+Greet john -> fn_greet
+{"name": "j"}
+Reverse the string 'hello' -> fn_reverse_string
+{"s": "h"}
+Reverse the string 'world' -> fn_reverse_string
+{"s": "w"}
+What is the square root of 16? -> fn_get_square_root
+{"a": 16}
+Calculate the square root of 144 -> fn_get_square_root
+{"a": 144}
+Replace all numbers in "Hello 34 I'm 233 years old" with NUMBERS -> fn_substitute_string_with_regex
+{"source_string": "H","regex": "H","replacement": "H"}
+Replace all vowels in 'Programming is fun' with asterisks -> fn_substitute_string_with_regex
+{"source_string": "a","regex": "aA","replacement": "aA"}
+Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat' -> fn_substitute_string_with_regex
+{"source_string": "A","regex": "c","replacement": "d"}
+Is the string 'HelloWorld' is capitalized? -> fn_is_capitalized
+{"source_string": "H"}
