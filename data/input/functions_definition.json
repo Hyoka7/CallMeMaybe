@@ -79,5 +79,17 @@
     "returns": {
       "type": "boolean"
     }
+  },
+  {
+    "name": "ft_strlen",
+    "description": "Return length of given string",
+    "parameters": {
+      "source_string": {
+        "type": "string"
+      }
+    },
+    "returns": {
+      "type": "number"
+    }
   }
 ]

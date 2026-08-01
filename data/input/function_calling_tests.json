@@ -37,5 +37,8 @@
   },
   {
     "prompt": "Is the string 'HelloWorld' is capitalized?"
+  },
+  {
+    "prompt": "What is the length of string 'cmichele'?"
   }
 ]

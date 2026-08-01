@@ -1,26 +1,30 @@
-6 functions loaded
-12 prompts loaded
+7 functions loaded
+14 prompts loaded
 What is the sum of 2 and 3? -> fn_add_numbers
 {"a": 2,"b": 3}
 What is the sum of 265 and 345? -> fn_add_numbers
 {"a": 265,"b": 345}
 Greet shrek -> fn_greet
-{"name": "G"}
+{"name": "shrek"}
+Say hello to alex -> fn_greet
+{"name": "alex"}
 Greet john -> fn_greet
-{"name": "j"}
+{"name": "john"}
 Reverse the string 'hello' -> fn_reverse_string
-{"s": "h"}
+{"s": "hello"}
 Reverse the string 'world' -> fn_reverse_string
-{"s": "w"}
+{"s": "world"}
 What is the square root of 16? -> fn_get_square_root
 {"a": 16}
 Calculate the square root of 144 -> fn_get_square_root
 {"a": 144}
 Replace all numbers in "Hello 34 I'm 233 years old" with NUMBERS -> fn_substitute_string_with_regex
-{"source_string": "H","regex": "H","replacement": "H"}
+{"source_string": "Hello 34 I'm 233 years old","regex": "34 233","replacement": "NUMBERS"}
 Replace all vowels in 'Programming is fun' with asterisks -> fn_substitute_string_with_regex
-{"source_string": "a","regex": "aA","replacement": "aA"}
+{"source_string": "Programming is fun","regex": "a|e|i|o|u|A|E|I|O|U|a|e|i|o|u|A|E|I|O|U","replacement": "**"}
 Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat' -> fn_substitute_string_with_regex
-{"source_string": "A","regex": "c","replacement": "d"}
+{"source_string": "The cat sat on the mat with another cat","regex": "cat.*cat","replacement": "dog"}
 Is the string 'HelloWorld' is capitalized? -> fn_is_capitalized
-{"source_string": "H"}
+{"source_string": "HelloWorld"}
+What is the length of string 'cmichele'? -> ft_strlen
+{"source_string": "cmichele"}

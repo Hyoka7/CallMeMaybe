@@ -51,12 +51,16 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "llm-sdk" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "llm-sdk", editable = "llm_sdk" },
+    { name = "numpy", specifier = ">=2.2.6" },
     { name = "pydantic", specifier = ">=2.13.4" },
 ]
 

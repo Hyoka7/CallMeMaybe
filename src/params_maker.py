@@ -1,10 +1,19 @@
+import heapq
+import itertools
 import json
+import math
+
+import numpy as np
 
 from llm_sdk import Small_LLM_Model
 from src.build_tokenn import allow_token
 from src.model import JsonFunction
 
 STRING_TOKEN_CACHE: dict[object, set[int]] = {}
+MAX_STRING_TOKENS = 64
+STRING_BEAM_WIDTH = 2
+
+StringBeam = tuple[float, int, list[int], list[int]]
 
 
 def append_json_token(
@@ -48,7 +57,85 @@ def build_chr_token_list(llm: Small_LLM_Model, vocab_size: int) -> set[int]:
     return tokens
 
 
-def params_maker(llm: Small_LLM_Model, prompt_ids: list[int], func: JsonFunction):
+def make_string_tokens(
+    llm: Small_LLM_Model,
+    prompt_ids: list[int],
+    initial_logits,
+    allowed_tokens: set[int],
+    end_token: int,
+    beam_width: int = STRING_BEAM_WIDTH,
+) -> list[int]:
+    """Generate one JSON string value with constrained beam search."""
+    counter = itertools.count()
+    beams: list[StringBeam] = [
+        (0.0, next(counter), [], prompt_ids.copy())
+    ]
+    completed: list[StringBeam] = []
+
+    for step in range(MAX_STRING_TOKENS):
+        next_beams: list[StringBeam] = []
+        for score, _, tokens, current_prompt in beams:
+            if step == 0:
+                logits = initial_logits
+            else:
+                logits = llm.get_logits_from_input_ids(current_prompt)
+            candidates = allowed_tokens | {end_token}
+            candidate_logits = np.asarray(
+                [logits[token_id] for token_id in candidates],
+                dtype=np.float64,
+            )
+            log_total = float(np.logaddexp.reduce(candidate_logits))
+
+            end_logit = float(logits[end_token])
+            if math.isfinite(end_logit):
+                completed.append(
+                    (
+                        score + end_logit - log_total,
+                        next(counter),
+                        tokens,
+                        current_prompt,
+                    )
+                )
+
+            next_token_ids = heapq.nlargest(
+                beam_width,
+                allowed_tokens,
+                key=logits.__getitem__,
+            )
+            for token_id in next_token_ids:
+                token_logit = float(logits[token_id])
+                if not math.isfinite(token_logit):
+                    continue
+                new_beam: StringBeam = (
+                    score + token_logit - log_total,
+                    next(counter),
+                    tokens + [token_id],
+                    current_prompt + [token_id],
+                )
+                heapq.heappush(next_beams, new_beam)
+                if len(next_beams) > beam_width:
+                    heapq.heappop(next_beams)
+
+        beams = next_beams
+        if not beams:
+            break
+        if completed and max(beam[0] for beam in completed) >= max(
+            beam[0] for beam in beams
+        ):
+            break
+
+    if completed:
+        return max(completed, key=lambda beam: beam[0])[2]
+    if beams:
+        return max(beams, key=lambda beam: beam[0])[2]
+    return []
+
+
+def params_maker(
+    llm: Small_LLM_Model,
+    prompt_ids: list[int],
+    func: JsonFunction,
+):
     output = []
     append_json_token(llm, prompt_ids, output, "{")
     params = list(func.parameters.items())
@@ -82,22 +169,18 @@ def params_maker(llm: Small_LLM_Model, prompt_ids: list[int], func: JsonFunction
                 cur_tokens.append(cand_id)
         elif types["type"] == "string":
             append_json_token(llm, prompt_ids, output, '"')
-            cur_tokens = []
             logits = llm.get_logits_from_input_ids(prompt_ids)
             allowed_tokens = build_chr_token_list(llm, len(logits))
-            end_tokens = llm.encode('"')[0].tolist()[0]
-            while True:
-                candicates = allowed_tokens | {end_tokens}
-                cand_id = max(
-                    candicates,
-                    key=logits.__getitem__,
-                )
-                if cand_id == end_tokens:
-                    break
-                prompt_ids.append(cand_id)
-                output.append(cand_id)
-                cur_tokens.append(cand_id)
-                logits = llm.get_logits_from_input_ids(prompt_ids)
+            end_token = llm.encode('"')[0].tolist()[0]
+            string_tokens = make_string_tokens(
+                llm,
+                prompt_ids,
+                logits,
+                allowed_tokens,
+                end_token,
+            )
+            prompt_ids.extend(string_tokens)
+            output.extend(string_tokens)
             append_json_token(llm, prompt_ids, output, '"')
         elif types["type"] == "boolean":
             boolean_tokens = [

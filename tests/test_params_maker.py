@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 from src.model import JsonFunction
 from src.params_maker import params_maker
+from src.params_maker import MAX_STRING_TOKENS
 
 
 def make_encoded_text(text: str) -> list[Mock]:
@@ -175,6 +176,54 @@ class ParamsMakerTests(unittest.TestCase):
         result = params_maker(model, [1], function)
 
         self.assertEqual(json.loads(result), {})
+
+    def test_string_generation_has_a_safety_limit(self) -> None:
+        function = JsonFunction(
+            name="fn_echo",
+            description="Echo text.",
+            parameters={"text": {"type": "string"}},
+            returns={"type": "string"},
+        )
+        model = make_model("a" * MAX_STRING_TOKENS)
+
+        result = params_maker(model, [1], function)
+
+        self.assertEqual(
+            json.loads(result),
+            {"text": "a" * MAX_STRING_TOKENS},
+        )
+
+    def test_string_beam_keeps_a_path_that_ends_cleanly(self) -> None:
+        function = JsonFunction(
+            name="fn_echo",
+            description="Echo text.",
+            parameters={"text": {"type": "string"}},
+            returns={"type": "string"},
+        )
+        model = Mock()
+        model.encode.side_effect = make_encoded_text
+        model.decode.side_effect = lambda token_ids: "".join(
+            chr(token_id) for token_id in token_ids
+        )
+
+        def get_logits(prompt_ids: list[int]) -> list[float]:
+            logits = [float("-inf")] * 128
+            if prompt_ids[-1] == ord("b"):
+                logits[ord('"')] = 5.0
+            elif prompt_ids[-1] == ord("a"):
+                logits[ord("a")] = 5.0
+                logits[ord('"')] = -5.0
+            else:
+                logits[ord("a")] = 5.0
+                logits[ord("b")] = 4.0
+                logits[ord('"')] = -10.0
+            return logits
+
+        model.get_logits_from_input_ids.side_effect = get_logits
+
+        result = params_maker(model, [1], function)
+
+        self.assertEqual(json.loads(result), {"text": "b"})
 
 
 if __name__ == "__main__":

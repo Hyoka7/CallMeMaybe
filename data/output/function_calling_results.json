@@ -78,7 +78,7 @@
     "name": "fn_substitute_string_with_regex",
     "parameters": {
       "source_string": "Programming is fun",
-      "regex": "aeiouAEIOU",
+      "regex": "aeiou",
       "replacement": "**"
     }
   },
@@ -96,6 +96,13 @@
     "name": "fn_is_capitalized",
     "parameters": {
       "source_string": "HelloWorld"
+    }
+  },
+  {
+    "prompt": "What is the length of string 'cmichele'?",
+    "name": "ft_strlen",
+    "parameters": {
+      "source_string": "cmichele"
     }
   }
 ]

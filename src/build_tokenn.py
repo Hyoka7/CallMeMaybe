@@ -1,13 +1,14 @@
 from llm_sdk import Small_LLM_Model
-from src.model import JsonInput
 
 
-def encode_funcs(llm: Small_LLM_Model, funcs: JsonInput):
-    res = []
-    for func in funcs.func:
-        encoded_ids = llm.encode(func.name)[0].tolist()
-        res.append(encoded_ids)
-    return res
+def encode_options(
+    llm: Small_LLM_Model, option_count: int
+) -> list[list[int]]:
+    """Encode neutral numeric labels used for function selection."""
+    return [
+        llm.encode(str(index))[0].tolist()
+        for index in range(option_count)
+    ]
 
 
 def allow_token(encoded: list[list[int]], current_token: list[int]):

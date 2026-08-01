@@ -1,9 +1,9 @@
 import json
 
 from llm_sdk import Small_LLM_Model
-from src.build_tokenn import encode_funcs
+from src.build_tokenn import encode_options
 from src.cli import parse_args
-from src.function_selector import funcjson_returner, function_selector
+from src.function_selector import function_selector
 from src.json_to_file import write_results
 from src.loader import load_functions, load_prompts
 from src.model import JsonResult
@@ -22,14 +22,15 @@ def main() -> None:
         return
     print(f"{len(funcs.func)} functions loaded")
     print(f"{len(prompts.prompts)} prompts loaded")
-    encoded_funcs = encode_funcs(model, funcs)
+    encoded_options = encode_options(model, len(funcs.func))
     results: list[JsonResult] = []
     for pro in prompts.prompts:
         syspro = build_func_select_prompt(funcs, pro.prompt)
-        func_id = function_selector(model, syspro, encoded_funcs)
-        selected = model.decode(func_id)
+        option_ids = function_selector(model, syspro, encoded_options)
+        option_index = int(model.decode(option_ids))
+        selected_func = funcs.func[option_index]
+        selected = selected_func.name
         print(f"{pro.prompt} -> {selected}")
-        selected_func = funcjson_returner(selected, funcs)
         parampro = build_param_prompt(selected_func, pro.prompt)
         parampro_id = model.encode(parampro)[0].tolist()
         param = params_maker(model, parampro_id, selected_func)
