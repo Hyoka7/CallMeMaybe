@@ -2,6 +2,7 @@ import heapq
 import itertools
 import json
 import math
+import re
 
 import numpy as np
 
@@ -10,8 +11,10 @@ from src.build_tokenn import allow_token
 from src.model import JsonFunction
 
 STRING_TOKEN_CACHE: dict[object, set[int]] = {}
-MAX_STRING_TOKENS = 64
+MAX_STRING_TOKENS = 32
+MAX_NUMBER_TOKENS = 16
 STRING_BEAM_WIDTH = 2
+STRING_END_LOGIT_MARGIN = 3.0
 
 StringBeam = tuple[float, int, list[int], list[int]]
 
@@ -64,6 +67,8 @@ def make_string_tokens(
     allowed_tokens: set[int],
     end_token: int,
     beam_width: int = STRING_BEAM_WIDTH,
+    max_tokens: int = MAX_STRING_TOKENS,
+    regex_format: bool = False,
 ) -> list[int]:
     """Generate one JSON string value with constrained beam search."""
     counter = itertools.count()
@@ -72,8 +77,26 @@ def make_string_tokens(
     ]
     completed: list[StringBeam] = []
 
-    for step in range(MAX_STRING_TOKENS):
+    def completion_score(beam: StringBeam) -> tuple[float, float]:
+        if regex_format:
+            return (-float(len(beam[2])), beam[0])
+        return (beam[0], beam[0])
+
+    def is_valid_completion(beam: StringBeam) -> bool:
+        if not regex_format:
+            return True
+        pattern = llm.decode(beam[2])
+        if not pattern:
+            return False
+        try:
+            re.compile(pattern)
+        except re.error:
+            return False
+        return True
+
+    for step in range(max_tokens):
         next_beams: list[StringBeam] = []
+        natural_completions: list[StringBeam] = []
         for score, _, tokens, current_prompt in beams:
             if step == 0:
                 logits = initial_logits
@@ -88,14 +111,27 @@ def make_string_tokens(
 
             end_logit = float(logits[end_token])
             if math.isfinite(end_logit):
-                completed.append(
-                    (
-                        score + end_logit - log_total,
-                        next(counter),
-                        tokens,
-                        current_prompt,
-                    )
+                completion: StringBeam = (
+                    score + end_logit - log_total,
+                    next(counter),
+                    tokens,
+                    current_prompt,
                 )
+                completed.append(completion)
+
+                # A small model often ranks one ordinary character just above
+                # the closing quote and then continues indefinitely.  Once a
+                # non-empty value has been produced, accept a quote that is
+                # already close to the best permitted continuation.
+                best_text_logit = max(
+                    float(logits[token_id]) for token_id in allowed_tokens
+                )
+                if (
+                    tokens
+                    and is_valid_completion(completion)
+                    and best_text_logit - end_logit <= STRING_END_LOGIT_MARGIN
+                ):
+                    natural_completions.append(completion)
 
             next_token_ids = heapq.nlargest(
                 beam_width,
@@ -116,6 +152,14 @@ def make_string_tokens(
                 if len(next_beams) > beam_width:
                     heapq.heappop(next_beams)
 
+        if natural_completions:
+            valid_completed = [
+                beam
+                for beam in completed
+                if is_valid_completion(beam)
+            ]
+            return max(valid_completed, key=completion_score)[2]
+
         beams = next_beams
         if not beams:
             break
@@ -125,7 +169,12 @@ def make_string_tokens(
             break
 
     if completed:
-        return max(completed, key=lambda beam: beam[0])[2]
+        valid = [
+            beam for beam in completed if is_valid_completion(beam)
+        ]
+        non_empty = [beam for beam in completed if beam[2]]
+        candidates = valid or non_empty or completed
+        return max(candidates, key=completion_score)[2]
     if beams:
         return max(beams, key=lambda beam: beam[0])[2]
     return []
@@ -150,7 +199,7 @@ def params_maker(
             cur_tokens = []
             allowed_tokens = build_num_token_list(llm)
             end_tokens = set()
-            while True:
+            while len(cur_tokens) < MAX_NUMBER_TOKENS:
                 if len(cur_tokens) > 0 and len(end_tokens) == 0:
                     if index == params_len - 1:
                         end_tokens.add(llm.encode("}")[0].tolist()[0])
@@ -178,6 +227,8 @@ def params_maker(
                 logits,
                 allowed_tokens,
                 end_token,
+                beam_width=(STRING_BEAM_WIDTH if params_len == 1 else 1),
+                max_tokens=MAX_STRING_TOKENS,
             )
             prompt_ids.extend(string_tokens)
             output.extend(string_tokens)

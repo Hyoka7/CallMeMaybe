@@ -34,8 +34,8 @@ def main() -> None:
         parampro = build_param_prompt(selected_func, pro.prompt)
         parampro_id = model.encode(parampro)[0].tolist()
         param = params_maker(model, parampro_id, selected_func)
-        print(param)
         parameters = json.loads(param)
+        print(json.dumps(parameters))
         results.append(
             JsonResult(
                 prompt=pro.prompt,

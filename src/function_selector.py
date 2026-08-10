@@ -7,7 +7,6 @@ from llm_sdk import Small_LLM_Model
 from src.build_tokenn import allow_token
 from src.model import JsonFunction, JsonInput
 
-
 Beam = tuple[float, int, list[int], list[int]]
 
 
@@ -21,10 +20,7 @@ def token_log_probabilities(
         dtype=np.float64,
     )
     log_total = float(np.logaddexp.reduce(allowed_logits))
-    return {
-        token_id: float(logits[token_id] - log_total)
-        for token_id in token_ids
-    }
+    return {token_id: float(logits[token_id] - log_total) for token_id in token_ids}
 
 
 def function_selector(
@@ -91,9 +87,7 @@ def function_selector(
     return best[2]
 
 
-def funcjson_returner(
-    func_name: str, funcs: JsonInput
-) -> JsonFunction:
+def funcjson_returner(func_name: str, funcs: JsonInput) -> JsonFunction:
     """Return the definition matching a selected function name."""
     for function in funcs.func:
         if function.name == func_name:

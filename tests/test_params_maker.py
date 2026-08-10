@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 from src.model import JsonFunction
 from src.params_maker import params_maker
+from src.params_maker import MAX_NUMBER_TOKENS
 from src.params_maker import MAX_STRING_TOKENS
 
 
@@ -119,6 +120,22 @@ class ParamsMakerTests(unittest.TestCase):
 
         self.assertEqual(json.loads(result), {"a": 144})
 
+    def test_number_generation_has_a_safety_limit(self) -> None:
+        function = JsonFunction(
+            name="fn_number",
+            description="Return a number.",
+            parameters={"value": {"type": "number"}},
+            returns={"type": "number"},
+        )
+        model = make_model("1" * MAX_NUMBER_TOKENS)
+
+        result = params_maker(model, [1], function)
+
+        self.assertEqual(
+            json.loads(result),
+            {"value": int("1" * MAX_NUMBER_TOKENS)},
+        )
+
     def test_false_boolean_parameter(self) -> None:
         function = JsonFunction(
             name="fn_is_enabled",
@@ -224,6 +241,32 @@ class ParamsMakerTests(unittest.TestCase):
         result = params_maker(model, [1], function)
 
         self.assertEqual(json.loads(result), {"text": "b"})
+
+    def test_string_accepts_a_close_quote_candidate(self) -> None:
+        function = JsonFunction(
+            name="fn_echo",
+            description="Echo text.",
+            parameters={"text": {"type": "string"}},
+            returns={"type": "string"},
+        )
+        model = Mock()
+        model.encode.side_effect = make_encoded_text
+        model.decode.side_effect = lambda token_ids: "".join(
+            chr(token_id) for token_id in token_ids
+        )
+
+        def get_logits(prompt_ids: list[int]) -> list[float]:
+            logits = [float("-inf")] * 128
+            logits[ord("a")] = 5.0
+            logits[ord('"')] = 3.0 if prompt_ids[-1] == ord("a") else -5.0
+            return logits
+
+        model.get_logits_from_input_ids.side_effect = get_logits
+
+        result = params_maker(model, [1], function)
+
+        self.assertEqual(json.loads(result), {"text": "a"})
+        self.assertEqual(model.get_logits_from_input_ids.call_count, 2)
 
 
 if __name__ == "__main__":

@@ -28,8 +28,18 @@ def build_param_prompt(func: JsonFunction, user_input: str):
         "Rules:\n"
         "- Output only one JSON object.\n"
         "- Include every required parameter exactly once.\n"
-        "- Do not include extra parameters.\n"
         "- Preserve values from the user's request.\n"
+    )
+    prompt += (
+        "- Infer each parameter's semantic role from its name and the "
+        "function description.\n"
+    )
+    prompt += (
+        "- If a parameter represents a regex pattern, generate a short "
+        "reusable pattern rather than listing matches (for example, "
+        "numbers -> [0-9]+).\n"
+        "- End a regex value immediately after the complete pattern.\n"
+        "- Do not include extra parameters.\n"
         "- Do not calculate or execute the function.\n"
     )
     prompt += f"Request: {user_input}\n"

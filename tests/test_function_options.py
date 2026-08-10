@@ -43,6 +43,5 @@ class FunctionOptionTests(unittest.TestCase):
         self.assertIn("[1] ft_strlen: Return string length.", prompt)
         self.assertTrue(prompt.endswith("Option number: "))
 
-
 if __name__ == "__main__":
     unittest.main()
