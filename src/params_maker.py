@@ -19,6 +19,29 @@ STRING_END_LOGIT_MARGIN = 3.0
 StringBeam = tuple[float, int, list[int], list[int]]
 
 
+def has_balanced_regex_braces(pattern: str) -> bool:
+    depth = 0
+    escaped = False
+    in_character_class = False
+    for character in pattern:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+        elif character == "[":
+            in_character_class = True
+        elif character == "]":
+            in_character_class = False
+        elif not in_character_class and character == "{":
+            depth += 1
+        elif not in_character_class and character == "}":
+            if depth == 0:
+                return False
+            depth -= 1
+    return depth == 0
+
+
 def append_json_token(
     llm: Small_LLM_Model, prompt_ids: list[int], output_ids: list[int], literal
 ):
@@ -79,7 +102,8 @@ def make_string_tokens(
 
     def completion_score(beam: StringBeam) -> tuple[float, float]:
         if regex_format:
-            return (-float(len(beam[2])), beam[0])
+            length = max(len(beam[2]), 1)
+            return (beam[0] / length, beam[0])
         return (beam[0], beam[0])
 
     def is_valid_completion(beam: StringBeam) -> bool:
@@ -87,6 +111,10 @@ def make_string_tokens(
             return True
         pattern = llm.decode(beam[2])
         if not pattern:
+            return False
+        if pattern.endswith(("|", "\\")):
+            return False
+        if not has_balanced_regex_braces(pattern):
             return False
         try:
             re.compile(pattern)
@@ -152,7 +180,7 @@ def make_string_tokens(
                 if len(next_beams) > beam_width:
                     heapq.heappop(next_beams)
 
-        if natural_completions:
+        if natural_completions and not regex_format:
             valid_completed = [
                 beam
                 for beam in completed
@@ -163,7 +191,7 @@ def make_string_tokens(
         beams = next_beams
         if not beams:
             break
-        if completed and max(beam[0] for beam in completed) >= max(
+        if not regex_format and completed and max(beam[0] for beam in completed) >= max(
             beam[0] for beam in beams
         ):
             break
@@ -172,10 +200,14 @@ def make_string_tokens(
         valid = [
             beam for beam in completed if is_valid_completion(beam)
         ]
+        if regex_format and not valid:
+            raise RuntimeError("No valid regular expression was completed")
         non_empty = [beam for beam in completed if beam[2]]
         candidates = valid or non_empty or completed
         return max(candidates, key=completion_score)[2]
     if beams:
+        if regex_format:
+            raise RuntimeError("No regular expression was completed")
         return max(beams, key=lambda beam: beam[0])[2]
     return []
 
@@ -184,11 +216,15 @@ def params_maker(
     llm: Small_LLM_Model,
     prompt_ids: list[int],
     func: JsonFunction,
+    regex_parameters: set[str] | None = None,
+    string_overrides: dict[str, str] | None = None,
 ):
     output = []
     append_json_token(llm, prompt_ids, output, "{")
     params = list(func.parameters.items())
     params_len = len(params)
+    regex_parameters = regex_parameters or set()
+    string_overrides = string_overrides or {}
     for index, (name, types) in enumerate(params):
         if index > 0:
             append_json_token(llm, prompt_ids, output, ",")
@@ -217,6 +253,16 @@ def params_maker(
                 output.append(cand_id)
                 cur_tokens.append(cand_id)
         elif types["type"] == "string":
+            if name in string_overrides:
+                override_ids = llm.encode(
+                    json.dumps(string_overrides[name])
+                )[0].tolist()
+                output.extend(override_ids)
+                prompt_ids.extend(
+                    llm.encode('"<regex-pattern>"')[0].tolist()
+                )
+                continue
+            is_regex_value = name in regex_parameters
             append_json_token(llm, prompt_ids, output, '"')
             logits = llm.get_logits_from_input_ids(prompt_ids)
             allowed_tokens = build_chr_token_list(llm, len(logits))
@@ -227,8 +273,13 @@ def params_maker(
                 logits,
                 allowed_tokens,
                 end_token,
-                beam_width=(STRING_BEAM_WIDTH if params_len == 1 else 1),
-                max_tokens=MAX_STRING_TOKENS,
+                beam_width=(
+                    STRING_BEAM_WIDTH
+                    if is_regex_value or params_len == 1
+                    else 1
+                ),
+                max_tokens=16 if is_regex_value else MAX_STRING_TOKENS,
+                regex_format=is_regex_value,
             )
             prompt_ids.extend(string_tokens)
             output.extend(string_tokens)
@@ -254,3 +305,24 @@ def params_maker(
     append_json_token(llm, prompt_ids, output, "}")
     generated = llm.decode(output)
     return generated
+
+
+def make_regex_value(
+    llm: Small_LLM_Model,
+    prompt: str,
+) -> str:
+    prompt_ids = llm.encode(prompt)[0].tolist()
+    logits = llm.get_logits_from_input_ids(prompt_ids)
+    allowed_tokens = build_chr_token_list(llm, len(logits))
+    end_token = llm.encode('"')[0].tolist()[0]
+    tokens = make_string_tokens(
+        llm,
+        prompt_ids,
+        logits,
+        allowed_tokens,
+        end_token,
+        beam_width=3,
+        max_tokens=8,
+        regex_format=True,
+    )
+    return llm.decode(tokens).strip()

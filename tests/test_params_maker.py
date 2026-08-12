@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 from src.model import JsonFunction
 from src.params_maker import params_maker
+from src.params_maker import has_balanced_regex_braces
 from src.params_maker import MAX_NUMBER_TOKENS
 from src.params_maker import MAX_STRING_TOKENS
 
@@ -53,6 +54,11 @@ class ParamsMakerTests(unittest.TestCase):
         result = params_maker(model, [1], function)
 
         self.assertEqual(json.loads(result), {"a": 2, "b": 3})
+
+    def test_regex_brace_validation(self) -> None:
+        self.assertTrue(has_balanced_regex_braces("[0-9]{1,3}"))
+        self.assertTrue(has_balanced_regex_braces(r"literal\}"))
+        self.assertFalse(has_balanced_regex_braces("([0-9]+)}"))
 
     def test_string_parameter(self) -> None:
         function = JsonFunction(

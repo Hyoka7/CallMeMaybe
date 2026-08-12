@@ -7,8 +7,9 @@ from src.function_selector import function_selector
 from src.json_to_file import write_results
 from src.loader import load_functions, load_prompts
 from src.model import JsonResult
-from src.params_maker import params_maker
-from src.prompt import build_func_select_prompt, build_param_prompt
+from src.parameter_roles import detect_regex_parameters
+from src.params_maker import make_regex_value, params_maker
+from src.prompt import build_func_select_prompt, build_param_prompt, build_regex_prompt
 
 
 def main() -> None:
@@ -31,9 +32,30 @@ def main() -> None:
         selected_func = funcs.func[option_index]
         selected = selected_func.name
         print(f"{pro.prompt} -> {selected}")
-        parampro = build_param_prompt(selected_func, pro.prompt)
+        regex_parameters = detect_regex_parameters(
+            model,
+            selected_func.parameters,
+        )
+        regex_values = {
+            name: make_regex_value(
+                model,
+                build_regex_prompt(selected_func, name, pro.prompt),
+            )
+            for name in regex_parameters
+        }
+        parampro = build_param_prompt(
+            selected_func,
+            pro.prompt,
+            regex_parameters,
+        )
         parampro_id = model.encode(parampro)[0].tolist()
-        param = params_maker(model, parampro_id, selected_func)
+        param = params_maker(
+            model,
+            parampro_id,
+            selected_func,
+            regex_parameters,
+            regex_values,
+        )
         parameters = json.loads(param)
         print(json.dumps(parameters))
         results.append(
