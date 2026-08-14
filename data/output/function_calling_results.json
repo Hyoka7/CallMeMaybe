@@ -69,7 +69,7 @@
     "name": "fn_substitute_string_with_regex",
     "parameters": {
       "source_string": "Hello 34 I'm 233 years old",
-      "regex": "34 233",
+      "regex": "([0-9]+)",
       "replacement": "NUMBERS"
     }
   },
@@ -78,8 +78,8 @@
     "name": "fn_substitute_string_with_regex",
     "parameters": {
       "source_string": "Programming is fun",
-      "regex": "aeiouAEIOU",
-      "replacement": "asterisk"
+      "regex": "([aeiouAEIOU])",
+      "replacement": "**"
     }
   },
   {
@@ -87,7 +87,7 @@
     "name": "fn_substitute_string_with_regex",
     "parameters": {
       "source_string": "The cat sat on the mat with another cat",
-      "regex": "cat -> dog",
+      "regex": "cat",
       "replacement": "dog"
     }
   },
