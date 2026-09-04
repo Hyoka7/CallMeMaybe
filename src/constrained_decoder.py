@@ -81,6 +81,17 @@ class ParameterKeyState:
         return json.dumps(self.name, ensure_ascii=False) + ": "
 
 
+@dataclass(frozen=True)
+class ParameterSeparatorState:
+    """State selecting the only valid separator after a parameter value."""
+
+    is_last: bool
+
+    @property
+    def literal(self) -> str:
+        return "}" if self.is_last else ","
+
+
 class ValueHandler(Protocol):
     """Interface implemented by one schema value-type grammar."""
 
@@ -664,8 +675,6 @@ class ConstrainedDecoder(BaseModel):
         for index, (name, definition) in enumerate(
             function.parameters.items()
         ):
-            if index:
-                self._emit_literal_constrained(structure_prompt, output, ",")
             key_state = ParameterKeyState(name)
             self._emit_literal_constrained(
                 structure_prompt, output, key_state.literal
@@ -702,7 +711,14 @@ class ConstrainedDecoder(BaseModel):
                 output.extend(self._number(structure_prompt, end_text))
             elif value_type == "boolean":
                 output.extend(self._boolean(structure_prompt))
-        self._emit_literal_constrained(structure_prompt, output, "}")
+            separator = ParameterSeparatorState(
+                is_last=index + 1 == len(function.parameters)
+            )
+            self._emit_literal_constrained(
+                structure_prompt, output, separator.literal
+            )
+        if not function.parameters:
+            self._emit_literal_constrained(structure_prompt, output, "}")
 
     def generate_call(
         self,
