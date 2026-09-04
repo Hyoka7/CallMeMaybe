@@ -269,6 +269,31 @@ class ConstrainedDecoder(BaseModel):
                 candidates[token_id] = result
         return candidates
 
+    def _emit_literal_constrained(
+        self, prompt: list[int], output: list[int], literal: str
+    ) -> None:
+        """Emit a fixed fragment using only tokens valid for its literal state."""
+        state = LiteralState(literal)
+        while not state.finished:
+            candidates = self.literal_candidates(state)
+            if not candidates:
+                raise NoValidTokenError(
+                    f"No token can continue fixed JSON fragment {state.remaining!r}"
+                )
+            logits = np.asarray(self.model.get_logits_from_input_ids(prompt))
+            scored = {
+                token_id: float(logits[token_id])
+                for token_id in candidates
+                if token_id < len(logits)
+            }
+            if not scored:
+                raise NoValidTokenError("Model logits contain no valid vocabulary token")
+            chosen = max(scored, key=scored.__getitem__)
+            token_text = self.vocabulary.strs[chosen]
+            prompt.append(chosen)
+            output.append(chosen)
+            state = LiteralState(candidates[chosen].remaining)
+
     def _trie_choice(self, prompt: str, choices: list[str]) -> str:
         """Choose one complete string, allowing terminal prefix nodes."""
         return self._trie_choice_ids(
@@ -654,11 +679,13 @@ class ConstrainedDecoder(BaseModel):
         )
         name = self._trie_choice_ids(prompt_ids, list(by_name), output)
         selected = by_name[name]
-        self._append(prompt_ids, output, '", "parameters": ')
+        self._emit_literal_constrained(
+            prompt_ids, output, '", "parameters": '
+        )
         self._generate_parameters(
             prompt_ids, output, selected, user_input
         )
-        self._append(prompt_ids, output, "}")
+        self._emit_literal_constrained(prompt_ids, output, "}")
         call = json.loads(self.model.decode(output))
         parameters = call.get("parameters")
         if not isinstance(parameters, dict):
