@@ -25,12 +25,12 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         "semantic role: literal input, matching pattern, or ordinary value.\n"
         "For literal input, copy the user's source text exactly.\n"
         "For a matching pattern, emit only the shortest reusable regular "
-        "expression representing the requested matches. Stop the value as soon "
-        "as that pattern is complete. A set of alternative individual characters "
-        "must be one bracketed character class. A repeated category must use an "
-        "appropriate quantifier. An exact word remains that word. Never append "
-        "matched text, source text, replacement text, explanations, or unrelated "
-        "alternatives to a pattern.\n"
+        "expression representing the requested matches. Stop the value as "
+        "soon as that pattern is complete. A set of alternative individual "
+        "characters must be one bracketed character class. A repeated "
+        "category must use an appropriate quantifier. An exact word remains "
+        "that word. Never append matched text, source text, replacement text, "
+        "explanations, or unrelated alternatives to a pattern.\n"
         "For an ordinary value, copy only the requested argument value."
     )
     user = "Available functions:\n" + "\n".join(

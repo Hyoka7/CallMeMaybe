@@ -1,4 +1,5 @@
 import json
+import sys
 
 from llm_sdk import Small_LLM_Model
 from src.cli import parse_args
@@ -9,31 +10,21 @@ from src.model import JsonResult
 from src.prompt import build_call_prompt
 
 
-def main() -> None:
+def run() -> int:
     """Select functions and generate schema-constrained arguments."""
     args = parse_args()
     model = Small_LLM_Model()
-    try:
-        funcs = load_functions(args.functions_definition)
-        prompts = load_prompts(args.input)
-        vocabulary = Vocabulary.from_sdk(model)
-    except (OSError, ValueError) as err:
-        print(f"Aborting: {err}")
-        return
-    decoder = ConstrainedDecoder(model, vocabulary)
-    print(f"{len(funcs.func)} functions loaded")
-    print(f"{len(prompts.prompts)} prompts loaded")
+    funcs = load_functions(args.functions_definition)
+    prompts = load_prompts(args.input)
+    vocabulary = Vocabulary.from_sdk(model)
+    decoder = ConstrainedDecoder(model=model, vocabulary=vocabulary)
     results: list[JsonResult] = []
     for item in prompts.prompts:
-        try:
-            selected, parameters = decoder.generate_call(
-                build_call_prompt(funcs, item.prompt),
-                funcs.func,
-                item.prompt,
-            )
-        except (RuntimeError, ValueError) as err:
-            print(f"Aborting prompt {item.prompt!r}: {err}")
-            return
+        selected, parameters = decoder.generate_call(
+            build_call_prompt(funcs, item.prompt),
+            funcs.func,
+            item.prompt,
+        )
         print(f"{item.prompt} -> {selected.name}")
         print(json.dumps(parameters))
         results.append(JsonResult(
@@ -42,7 +33,23 @@ def main() -> None:
             parameters=parameters,
         ))
     write_results(args.output, results)
+    return 0
+
+
+def main() -> int:
+    """Run the application and translate failures into process exit codes."""
+    try:
+        return run()
+    except KeyboardInterrupt:
+        print("\nAborted by user.", file=sys.stderr)
+        return 130
+    except MemoryError:
+        print("Aborting: insufficient memory.", file=sys.stderr)
+        return 1
+    except Exception as err:
+        print(f"Aborting: {err}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

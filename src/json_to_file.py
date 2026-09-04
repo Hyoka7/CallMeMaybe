@@ -5,6 +5,7 @@ from src.model import JsonResult
 
 
 def write_results(path: Path, results: list[JsonResult]) -> None:
+    """Serialize validated function-call results as a JSON array."""
     path.parent.mkdir(parents=True, exist_ok=True)
 
     data = [result.model_dump() for result in results]

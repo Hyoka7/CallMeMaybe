@@ -17,3 +17,13 @@ members = [
 
 [tool.uv.sources]
 llm-sdk = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "flake8>=7.3.0",
+    "mypy>=2.3.1",
+]
+
+[tool.mypy]
+mypy_path = "llm_sdk"
+exclude = ["^\\.venv/", "^llm_sdk/"]

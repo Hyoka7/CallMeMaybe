@@ -1,10 +1,11 @@
 import json
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
+from numpy.typing import NDArray
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from llm_sdk import Small_LLM_Model
 from src.model import JsonFunction
@@ -19,40 +20,43 @@ NUMBER_COMPLETE = re.compile(
 )
 
 
-@dataclass
-class TrieNode:
+class TrieNode(BaseModel):
     """One token-ID trie node; END marks a complete candidate."""
 
-    children: dict[int, "TrieNode"] = field(default_factory=dict)
+    children: dict[int, "TrieNode"] = Field(default_factory=dict)
     value: str | None = None
 
     def insert(self, token_ids: list[int], value: str) -> None:
+        """Insert one tokenized candidate and its terminal value."""
         node = self
         for token_id in token_ids:
             node = node.children.setdefault(token_id, TrieNode())
         node.children.setdefault(END, TrieNode()).value = value
 
 
-@dataclass(frozen=True)
-class Vocabulary:
+class Vocabulary(BaseModel):
     """Token classes derived once from the SDK vocabulary file."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
+
     strs: tuple[str, ...]
-    str_mask: np.ndarray
-    lead_space: np.ndarray
-    close_mask: np.ndarray
+    str_mask: NDArray[np.bool_]
+    lead_space: NDArray[np.bool_]
+    close_mask: NDArray[np.bool_]
     close_prefix: tuple[str | None, ...]
     quote: int
     number_tokens: dict[int, str]
+    special_tokens: dict[int, str]
 
     @classmethod
     def from_sdk(cls, model: Small_LLM_Model) -> "Vocabulary":
+        """Build constrained token classes from the SDK tokenizer file."""
         path = Path(model.get_path_to_tokenizer_file())
         with path.open(encoding="utf-8") as file:
             data = json.load(file)
         raw_vocab = data.get("model", {}).get("vocab")
         if not isinstance(raw_vocab, dict):
-            raise ValueError("Tokenizer file has no model.vocab mapping")
+            raise TypeError("Tokenizer file has no model.vocab mapping")
         token_ids = [
             token_id for token_id in raw_vocab.values()
             if isinstance(token_id, int)
@@ -68,6 +72,7 @@ class Vocabulary:
         close_mask = np.zeros(vocab_size, dtype=bool)
         close_prefix: list[str | None] = [None] * vocab_size
         number_ids: dict[int, str] = {}
+        special_ids: dict[int, str] = {}
         for token_id in raw_vocab.values():
             if not isinstance(token_id, int):
                 continue
@@ -79,6 +84,15 @@ class Vocabulary:
                 for char in text
             ):
                 string_mask[token_id] = True
+            elif (
+                text
+                and any(char in text for char in {'"', "\\"})
+                and all(
+                    char.isprintable() and char != "\ufffd"
+                    for char in text
+                )
+            ):
+                special_ids[token_id] = text
             if text.endswith('"'):
                 prefix = text[:-1]
                 if all(
@@ -96,25 +110,30 @@ class Vocabulary:
         if not string_mask.any() or not close_mask.any() or not number_ids:
             raise ValueError("Could not derive token classes from vocabulary")
         return cls(
-            tuple(strings),
-            string_mask,
-            lead_space,
-            close_mask,
-            tuple(close_prefix),
-            quote_ids[0],
-            number_ids,
+            strs=tuple(strings),
+            str_mask=string_mask,
+            lead_space=lead_space,
+            close_mask=close_mask,
+            close_prefix=tuple(close_prefix),
+            quote=quote_ids[0],
+            number_tokens=number_ids,
+            special_tokens=special_ids,
         )
 
 
-class ConstrainedDecoder:
+class ConstrainedDecoder(BaseModel):
     """Greedy LLM decoding restricted by tries and JSON value types."""
 
-    def __init__(self, model: Small_LLM_Model, vocabulary: Vocabulary) -> None:
-        self.model = model
-        self.vocabulary = vocabulary
-        self._regex_roles: dict[tuple[str, tuple[str, ...]], str | None] = {}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    model: Small_LLM_Model
+    vocabulary: Vocabulary
+    _regex_roles: dict[tuple[str, tuple[str, ...]], str | None] = PrivateAttr(
+        default_factory=dict
+    )
 
     def _append(self, prompt: list[int], output: list[int], text: str) -> None:
+        """Tokenize text and append it to prompt and generated output."""
         token_ids = self.model.encode(text)[0].tolist()
         prompt.extend(token_ids)
         output.extend(token_ids)
@@ -175,9 +194,9 @@ class ConstrainedDecoder:
             return self._regex_roles[cache_key] == parameter_name
         prompt = (
             "Choose which string argument itself stores the reusable regular "
-            "expression used for matching. Do not choose source text, replacement "
-            "text, names, or other direct values. Choose NONE if this function "
-            "has no regex-pattern argument.\n"
+            "expression used for matching. Do not choose source text, "
+            "replacement text, names, or other direct values. Choose NONE if "
+            "this function has no regex-pattern argument.\n"
             f"Function purpose: {function.description}\n"
             f"String arguments: {', '.join(string_names)}\n"
             "Pattern argument: \""
@@ -200,10 +219,12 @@ class ConstrainedDecoder:
         }
 
         def scores(request: str) -> dict[str, float]:
+            """Return baseline-adjustable intent logits for one request."""
             prompt = (
                 "Classify regex matching intent as characters for alternative "
-                "individual characters, exact for one exact literal word or text, "
-                "or general for a repeated category or other structure.\n"
+                "individual characters, exact for one exact literal word or "
+                "text, or general for a repeated category or other "
+                "structure.\n"
                 "Examples: individual vowels = characters; exact word bird = "
                 "exact; numeric sequences = general.\n"
                 f"Function purpose: {function.description}\n"
@@ -242,9 +263,9 @@ class ConstrainedDecoder:
         """Find a completed structural regex inside a multi-text token."""
         for length in range(1, len(pattern) + 1):
             prefix = pattern[:length]
-            if any(char in prefix for char in "[](){}+*?\\.^$"):
-                if cls._regex_complete(prefix):
-                    return prefix
+            structural = any(char in prefix for char in "[](){}+*?\\.^$")
+            if structural and cls._regex_complete(prefix):
+                return prefix
         return None
 
     def _refine_regex(self, pattern: str) -> str:
@@ -274,20 +295,31 @@ class ConstrainedDecoder:
             copy_size = min(known_size, len(logits))
             mask = np.zeros(len(logits), dtype=bool)
             mask[:copy_size] = self.vocabulary.str_mask[:copy_size]
+            for token_id, token_text in self.vocabulary.special_tokens.items():
+                if token_id < len(mask) and self._literal_prefix(
+                    content + token_text, user_input
+                ):
+                    mask[token_id] = True
+            close_mask = np.zeros(len(logits), dtype=bool)
+            close_mask[:copy_size] = self.vocabulary.close_mask[:copy_size]
             if not content:
                 lead_space = np.zeros(len(logits), dtype=bool)
                 lead_space[:copy_size] = self.vocabulary.lead_space[:copy_size]
                 mask &= ~lead_space
-            else:
-                close_mask = np.zeros(len(logits), dtype=bool)
-                close_mask[:copy_size] = self.vocabulary.close_mask[:copy_size]
-                if regex_kind is not None or not self._literal_incomplete(
-                    content, user_input
-                ):
-                    mask |= close_mask
+            if regex_kind is not None or not self._literal_incomplete(
+                content, user_input
+            ):
+                mask |= close_mask
             chosen = int(np.argmax(np.where(mask, logits, -np.inf)))
             prefix = self.vocabulary.close_prefix[chosen]
             if prefix is not None:
+                token_text = self.vocabulary.strs[chosen]
+                if token_text and self._literal_prefix(
+                    content + token_text, user_input
+                ):
+                    self._append_string_fragment(prompt, token_text, chosen)
+                    content += token_text
+                    continue
                 proposed_close = content + prefix
                 if (
                     regex_kind is None
@@ -315,7 +347,8 @@ class ConstrainedDecoder:
                 prompt.extend(self.model.encode(suffix)[0].tolist())
                 prompt.append(self.vocabulary.quote)
                 return complete
-            prompt.append(chosen)
+            fragment = self.vocabulary.strs[chosen]
+            self._append_string_fragment(prompt, fragment, chosen)
             content = proposed
         if regex_kind == "characters" and not content.endswith("]"):
             content += "]"
@@ -324,21 +357,50 @@ class ConstrainedDecoder:
         return content
 
     @staticmethod
-    def _literal_incomplete(content: str, user_input: str) -> bool:
-        """Check whether content is a strict prefix of a requested text span."""
-        candidates = re.findall(r"[A-Za-z0-9_]+", user_input)
-        candidates.extend(
+    def _literal_candidates(user_input: str) -> list[str]:
+        """Extract likely literal argument values from a user request."""
+        quoted = [
             match[0] or match[1]
-            for match in re.findall(r"'([^']*)'|\"([^\"]*)\"", user_input)
+            for match in re.findall(
+                r"'([^']*)'|\"([^\"]*)\"", user_input
+            )
+        ]
+        if quoted:
+            return quoted
+        return re.findall(r"[A-Za-z0-9_]+", user_input)
+
+    @classmethod
+    def _literal_prefix(cls, content: str, user_input: str) -> bool:
+        """Check whether content prefixes a requested literal value."""
+        return any(
+            candidate.startswith(content)
+            for candidate in cls._literal_candidates(user_input)
         )
+
+    @classmethod
+    def _literal_incomplete(
+        cls, content: str, user_input: str
+    ) -> bool:
+        """Check if content is a strict prefix of a requested text span."""
         return any(
             candidate.startswith(content) and candidate != content
-            for candidate in candidates
+            for candidate in cls._literal_candidates(user_input)
         )
+
+    def _append_string_fragment(
+        self, prompt: list[int], fragment: str, token_id: int
+    ) -> None:
+        """Append one semantic string fragment using JSON escaping."""
+        escaped = json.dumps(fragment, ensure_ascii=False)[1:-1]
+        if escaped == fragment:
+            prompt.append(token_id)
+        else:
+            prompt.extend(self.model.encode(escaped)[0].tolist())
 
     def _number(
         self, prompt: list[int], end_text: str, limit: int = 24
     ) -> list[int]:
+        """Generate a terminating JSON number token by token."""
         output: list[int] = []
         text = ""
         end_token = self.model.encode(end_text)[0].tolist()[0]
@@ -376,13 +438,14 @@ class ConstrainedDecoder:
         raise RuntimeError("Number value did not terminate")
 
     def _boolean(self, prompt: list[int]) -> list[int]:
+        """Choose one JSON boolean literal from model logits."""
         choices = {
             value: self.model.encode(value)[0].tolist()
             for value in ("true", "false")
         }
         first_logits = self.model.get_logits_from_input_ids(prompt)
         value = max(choices, key=lambda item: first_logits[choices[item][0]])
-        token_ids = choices[value]
+        token_ids = cast(list[int], choices[value])
         prompt.extend(token_ids)
         return token_ids
 
@@ -393,7 +456,7 @@ class ConstrainedDecoder:
         function: JsonFunction,
         user_input: str,
     ) -> None:
-        """Continue one generation with a schema-constrained argument object."""
+        """Generate one schema-constrained argument object."""
         self._append(structure_prompt, output, "{")
         for index, (name, definition) in enumerate(
             function.parameters.items()
@@ -424,7 +487,8 @@ class ConstrainedDecoder:
                         )
                         structure_prompt.append(self.vocabulary.quote)
                         value = refined
-                output.extend(self.model.encode(value)[0].tolist())
+                escaped = json.dumps(value, ensure_ascii=False)[1:-1]
+                output.extend(self.model.encode(escaped)[0].tolist())
                 output.append(self.vocabulary.quote)
             elif value_type == "number":
                 end_text = (
@@ -457,7 +521,7 @@ class ConstrainedDecoder:
         call = json.loads(self.model.decode(output))
         parameters = call.get("parameters")
         if not isinstance(parameters, dict):
-            raise RuntimeError("Generated parameters are not an object")
+            raise TypeError("Generated parameters are not an object")
         if set(parameters) != set(selected.parameters):
             raise RuntimeError("Generated arguments do not match schema")
         return selected, parameters
