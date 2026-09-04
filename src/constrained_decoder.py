@@ -50,6 +50,11 @@ class LiteralState:
 
     remaining: str
 
+    @property
+    def finished(self) -> bool:
+        """Whether the fixed fragment has been completely consumed."""
+        return not self.remaining
+
     def consume(self, token_text: str) -> LiteralResult:
         if not self.remaining.startswith(token_text):
             return LiteralResult(False, self.remaining, False)
