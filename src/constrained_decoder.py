@@ -57,6 +57,19 @@ class LiteralState:
         return LiteralResult(True, remainder, not remainder)
 
 
+@dataclass(frozen=True)
+class FunctionNameState:
+    """Token-trie state for selecting one function name."""
+
+    choices: tuple[str, ...]
+
+    def build(self, decoder: "ConstrainedDecoder") -> TrieNode:
+        root = TrieNode()
+        for choice in self.choices:
+            root.insert(decoder.model.encode(choice)[0].tolist(), choice)
+        return root
+
+
 class ValueHandler(Protocol):
     """Interface implemented by one schema value-type grammar."""
 
@@ -299,6 +312,17 @@ class ConstrainedDecoder(BaseModel):
         return self._trie_choice_ids(
             self.model.encode(prompt)[0].tolist(), choices
         )
+
+    def _function_name(
+        self,
+        prompt_ids: list[int],
+        function_names: list[str],
+        output_ids: list[int],
+    ) -> str:
+        """Generate a function name through its dedicated trie state."""
+        state = FunctionNameState(tuple(function_names))
+        state.build(self)
+        return self._trie_choice_ids(prompt_ids, list(state.choices), output_ids)
 
     def _trie_choice_ids(
         self,
@@ -677,7 +701,7 @@ class ConstrainedDecoder(BaseModel):
             [],
             prompt_value[1:] + ', "name": "',
         )
-        name = self._trie_choice_ids(prompt_ids, list(by_name), output)
+        name = self._function_name(prompt_ids, list(by_name), output)
         selected = by_name[name]
         self._emit_literal_constrained(
             prompt_ids, output, '", "parameters": '
