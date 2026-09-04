@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
-from typing import Any, cast
+from dataclasses import dataclass
+from typing import Any, Protocol, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -18,6 +21,101 @@ NUMBER_PREFIX = re.compile(
 NUMBER_COMPLETE = re.compile(
     r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"
 )
+
+
+class DecoderError(RuntimeError):
+    """Base error for an invalid constrained-generation transition."""
+
+
+class NoValidTokenError(DecoderError):
+    """Raised when no vocabulary token can continue the current state."""
+
+
+class UnsupportedTypeError(DecoderError):
+    """Raised when a schema type has no registered value handler."""
+
+
+@dataclass(frozen=True)
+class LiteralResult:
+    """Result of consuming one token's decoded text in a literal state."""
+
+    valid: bool
+    remaining: str
+    finished: bool
+
+
+@dataclass(frozen=True)
+class LiteralState:
+    """State for a fixed JSON fragment, including token-boundary crossing."""
+
+    remaining: str
+
+    def consume(self, token_text: str) -> LiteralResult:
+        if not self.remaining.startswith(token_text):
+            return LiteralResult(False, self.remaining, False)
+        remainder = self.remaining[len(token_text):]
+        return LiteralResult(True, remainder, not remainder)
+
+
+class ValueHandler(Protocol):
+    """Interface implemented by one schema value-type grammar."""
+
+    def generate(
+        self,
+        decoder: "ConstrainedDecoder",
+        prompt: list[int],
+        user_input: str,
+        parameter_name: str,
+        function: JsonFunction,
+    ) -> Any:
+        """Generate one JSON value and append its token IDs to prompt."""
+
+
+class ValueHandlerRegistry:
+    """Extensible mapping from schema type names to value generators."""
+
+    def __init__(self) -> None:
+        self._handlers: dict[str, ValueHandler] = {}
+
+    def register(self, type_name: str, handler: ValueHandler) -> None:
+        if not type_name or not type_name.strip():
+            raise ValueError("Type name must not be empty")
+        self._handlers[type_name] = handler
+
+    def get(self, type_name: str) -> ValueHandler:
+        try:
+            return self._handlers[type_name]
+        except KeyError as exc:
+            raise UnsupportedTypeError(
+                f"No value handler registered for type {type_name!r}"
+            ) from exc
+
+
+class _StringHandler:
+    def generate(self, decoder: "ConstrainedDecoder", prompt: list[int],
+                 user_input: str, parameter_name: str,
+                 function: JsonFunction) -> Any:
+        regex_kind = None
+        if decoder._is_regex_argument(function, parameter_name):
+            regex_kind = decoder._regex_kind(function, parameter_name, user_input)
+        decoder._append(prompt, [], '"')
+        return decoder._string(prompt, regex_kind, user_input)
+
+
+class _NumberHandler:
+    def generate(self, decoder: "ConstrainedDecoder", prompt: list[int],
+                 user_input: str, parameter_name: str,
+                 function: JsonFunction) -> Any:
+        del user_input, parameter_name, function
+        return decoder._number(prompt, "}")
+
+
+class _BooleanHandler:
+    def generate(self, decoder: "ConstrainedDecoder", prompt: list[int],
+                 user_input: str, parameter_name: str,
+                 function: JsonFunction) -> Any:
+        del user_input, parameter_name, function
+        return decoder._boolean(prompt)
 
 
 class TrieNode(BaseModel):
@@ -131,12 +229,45 @@ class ConstrainedDecoder(BaseModel):
     _regex_roles: dict[tuple[str, tuple[str, ...]], str | None] = PrivateAttr(
         default_factory=dict
     )
+    _value_handlers: ValueHandlerRegistry = PrivateAttr()
+
+    def model_post_init(self, __context: Any) -> None:
+        """Install built-in handlers while keeping the registry extensible."""
+        del __context
+        registry = ValueHandlerRegistry()
+        registry.register("string", _StringHandler())
+        registry.register("number", _NumberHandler())
+        registry.register("boolean", _BooleanHandler())
+        self._value_handlers = registry
+
+    def register_value_handler(self, type_name: str, handler: ValueHandler) -> None:
+        """Register a schema value handler for future/custom types."""
+        self._ensure_value_handlers().register(type_name, handler)
+
+    def _ensure_value_handlers(self) -> ValueHandlerRegistry:
+        """Support lightweight model_construct() instances used by tests."""
+        try:
+            return self._value_handlers
+        except AttributeError:
+            self.model_post_init(None)
+            return self._value_handlers
 
     def _append(self, prompt: list[int], output: list[int], text: str) -> None:
         """Tokenize text and append it to prompt and generated output."""
         token_ids = self.model.encode(text)[0].tolist()
         prompt.extend(token_ids)
         output.extend(token_ids)
+
+    def literal_candidates(self, state: LiteralState) -> dict[int, LiteralResult]:
+        """Return vocabulary tokens that fully advance a fixed-fragment state."""
+        candidates: dict[int, LiteralResult] = {}
+        for token_id, token_text in enumerate(self.vocabulary.strs):
+            if not token_text:
+                continue
+            result = state.consume(token_text)
+            if result.valid:
+                candidates[token_id] = result
+        return candidates
 
     def _trie_choice(self, prompt: str, choices: list[str]) -> str:
         """Choose one complete string, allowing terminal prefix nodes."""
@@ -467,6 +598,7 @@ class ConstrainedDecoder(BaseModel):
                 structure_prompt, output, json.dumps(name) + ": "
             )
             value_type = definition["type"]
+            self._ensure_value_handlers().get(value_type)
             if value_type == "string":
                 self._append(structure_prompt, output, '"')
                 regex_kind = None
@@ -510,7 +642,16 @@ class ConstrainedDecoder(BaseModel):
             raise ValueError("No functions available")
         by_name = {function.name: function for function in functions}
         prompt_ids = self.model.encode(prompt)[0].tolist()
-        output: list[int] = self.model.encode('{"name": "')[0].tolist()
+        prompt_value = json.dumps(user_input, ensure_ascii=False)
+        output: list[int] = self.model.encode(
+            '{"prompt": ' + prompt_value + ', "name": "'
+        )[0].tolist()
+        # The chat prompt already contains the opening object/key/quote.
+        self._append(
+            prompt_ids,
+            [],
+            prompt_value[1:] + ', "name": "',
+        )
         name = self._trie_choice_ids(prompt_ids, list(by_name), output)
         selected = by_name[name]
         self._append(prompt_ids, output, '", "parameters": ')

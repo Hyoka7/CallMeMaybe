@@ -9,6 +9,8 @@ from src.constrained_decoder import (
     ConstrainedDecoder,
     TrieNode,
     Vocabulary,
+    UnsupportedTypeError,
+    LiteralState,
 )
 
 
@@ -75,6 +77,37 @@ class TrieNodeTests(unittest.TestCase):
             prefix.children[3].children[END].value,
             "fn_add_numbers",
         )
+
+    def test_decoder_can_register_a_future_value_type(self) -> None:
+        decoder = string_decoder(FakeStringModel([0]))
+
+        class DateHandler:
+            def generate(self, decoder, prompt, user_input, parameter_name, function):
+                return "2026-09-04"
+
+        decoder.register_value_handler("date", DateHandler())
+        self.assertIsNotNone(decoder._ensure_value_handlers().get("date"))
+
+    def test_unknown_value_type_has_explicit_error(self) -> None:
+        decoder = string_decoder(FakeStringModel([0]))
+        with self.assertRaises(UnsupportedTypeError):
+            decoder._ensure_value_handlers().get("date")
+
+    def test_literal_state_accepts_only_prefix_tokens(self) -> None:
+        state = LiteralState('"prompt": "')
+        self.assertTrue(state.consume('"prompt":').remaining == ' "')
+        self.assertFalse(state.consume('"name"').valid)
+
+    def test_literal_state_finishes_at_exact_boundary(self) -> None:
+        state = LiteralState('{}')
+        self.assertTrue(state.consume('{').remaining == '}')
+        self.assertTrue(state.consume('{}').finished)
+
+    def test_literal_candidates_are_derived_from_vocabulary(self) -> None:
+        decoder = string_decoder(FakeStringModel([0]))
+        candidates = decoder.literal_candidates(LiteralState('x'))
+        self.assertIn(2, candidates)
+        self.assertNotIn(1, candidates)
 
 
 class StringDecoderTests(unittest.TestCase):
