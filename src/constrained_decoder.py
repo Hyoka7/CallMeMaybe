@@ -336,6 +336,24 @@ class ConstrainedDecoder(BaseModel):
     ) -> None:
         """Emit a fixed fragment using only tokens valid for its literal state."""
         state = LiteralState(literal)
+        # Fixed schema fragments normally have one deterministic token path.
+        # Validate that path once, avoiding an expensive model call per token.
+        encoded = self.model.encode(literal)[0].tolist()
+        fast_state = state
+        fast_valid = True
+        for token_id in encoded:
+            if token_id >= len(self.vocabulary.strs):
+                fast_valid = False
+                break
+            result = fast_state.consume(self.vocabulary.strs[token_id])
+            if not result.valid:
+                fast_valid = False
+                break
+            fast_state = LiteralState(result.remaining)
+        if fast_valid and fast_state.finished:
+            prompt.extend(encoded)
+            output.extend(encoded)
+            return
         while not state.finished:
             candidates = self.literal_candidates(state)
             if not candidates:
