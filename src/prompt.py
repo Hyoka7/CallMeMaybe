@@ -42,4 +42,4 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         for function in funcs.func
     )
     user += f"\n\nRequest: {user_input}"
-    return build_chat_prompt(system, user, assistant_prefix='{"prompt": "')
+    return build_chat_prompt(system, user)

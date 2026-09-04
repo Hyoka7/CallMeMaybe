@@ -742,16 +742,11 @@ class ConstrainedDecoder(BaseModel):
             raise ValueError("No functions available")
         by_name = {function.name: function for function in functions}
         prompt_ids = self.model.encode(prompt)[0].tolist()
+        output: list[int] = []
+        self._emit_literal_constrained(prompt_ids, output, '{"prompt": "')
         prompt_value = json.dumps(user_input, ensure_ascii=False)
-        output: list[int] = self.model.encode(
-            '{"prompt": ' + prompt_value + ', "name": "'
-        )[0].tolist()
-        # The chat prompt already contains the opening object/key/quote.
-        self._append(
-            prompt_ids,
-            [],
-            prompt_value[1:] + ', "name": "',
-        )
+        self._emit_literal_constrained(prompt_ids, output, prompt_value[1:-1])
+        self._emit_literal_constrained(prompt_ids, output, '", "name": "')
         name = self._function_name(prompt_ids, list(by_name), output)
         selected = by_name[name]
         self._emit_literal_constrained(
