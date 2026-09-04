@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol, cast
 
 import numpy as np
@@ -63,11 +63,22 @@ class FunctionNameState:
 
     choices: tuple[str, ...]
 
-    def build(self, decoder: "ConstrainedDecoder") -> TrieNode:
+    def build(self, decoder: ConstrainedDecoder) -> TrieNode:
         root = TrieNode()
         for choice in self.choices:
             root.insert(decoder.model.encode(choice)[0].tolist(), choice)
         return root
+
+
+@dataclass(frozen=True)
+class ParameterKeyState:
+    """State describing the next schema parameter key to emit."""
+
+    name: str
+
+    @property
+    def literal(self) -> str:
+        return json.dumps(self.name, ensure_ascii=False) + ": "
 
 
 class ValueHandler(Protocol):
@@ -75,7 +86,7 @@ class ValueHandler(Protocol):
 
     def generate(
         self,
-        decoder: "ConstrainedDecoder",
+        decoder: ConstrainedDecoder,
         prompt: list[int],
         user_input: str,
         parameter_name: str,
@@ -105,9 +116,14 @@ class ValueHandlerRegistry:
 
 
 class _StringHandler:
-    def generate(self, decoder: "ConstrainedDecoder", prompt: list[int],
-                 user_input: str, parameter_name: str,
-                 function: JsonFunction) -> Any:
+    def generate(
+        self,
+        decoder: ConstrainedDecoder,
+        prompt: list[int],
+        user_input: str,
+        parameter_name: str,
+        function: JsonFunction,
+    ) -> Any:
         regex_kind = None
         if decoder._is_regex_argument(function, parameter_name):
             regex_kind = decoder._regex_kind(function, parameter_name, user_input)
@@ -116,17 +132,27 @@ class _StringHandler:
 
 
 class _NumberHandler:
-    def generate(self, decoder: "ConstrainedDecoder", prompt: list[int],
-                 user_input: str, parameter_name: str,
-                 function: JsonFunction) -> Any:
+    def generate(
+        self,
+        decoder: ConstrainedDecoder,
+        prompt: list[int],
+        user_input: str,
+        parameter_name: str,
+        function: JsonFunction,
+    ) -> Any:
         del user_input, parameter_name, function
         return decoder._number(prompt, "}")
 
 
 class _BooleanHandler:
-    def generate(self, decoder: "ConstrainedDecoder", prompt: list[int],
-                 user_input: str, parameter_name: str,
-                 function: JsonFunction) -> Any:
+    def generate(
+        self,
+        decoder: ConstrainedDecoder,
+        prompt: list[int],
+        user_input: str,
+        parameter_name: str,
+        function: JsonFunction,
+    ) -> Any:
         del user_input, parameter_name, function
         return decoder._boolean(prompt)
 
@@ -134,7 +160,7 @@ class _BooleanHandler:
 class TrieNode(BaseModel):
     """One token-ID trie node; END marks a complete candidate."""
 
-    children: dict[int, "TrieNode"] = Field(default_factory=dict)
+    children: dict[int, TrieNode] = Field(default_factory=dict)
     value: str | None = None
 
     def insert(self, token_ids: list[int], value: str) -> None:
@@ -160,7 +186,7 @@ class Vocabulary(BaseModel):
     special_tokens: dict[int, str]
 
     @classmethod
-    def from_sdk(cls, model: Small_LLM_Model) -> "Vocabulary":
+    def from_sdk(cls, model: Small_LLM_Model) -> Vocabulary:
         """Build constrained token classes from the SDK tokenizer file."""
         path = Path(model.get_path_to_tokenizer_file())
         with path.open(encoding="utf-8") as file:
@@ -197,11 +223,8 @@ class Vocabulary(BaseModel):
                 string_mask[token_id] = True
             elif (
                 text
-                and any(char in text for char in {'"', "\\"})
-                and all(
-                    char.isprintable() and char != "\ufffd"
-                    for char in text
-                )
+                and any(char in text for char in ('"', "\\"))
+                and all(char.isprintable() and char != "\ufffd" for char in text)
             ):
                 special_ids[token_id] = text
             if text.endswith('"'):
@@ -643,8 +666,9 @@ class ConstrainedDecoder(BaseModel):
         ):
             if index:
                 self._emit_literal_constrained(structure_prompt, output, ",")
+            key_state = ParameterKeyState(name)
             self._emit_literal_constrained(
-                structure_prompt, output, json.dumps(name) + ": "
+                structure_prompt, output, key_state.literal
             )
             value_type = definition["type"]
             self._ensure_value_handlers().get(value_type)
