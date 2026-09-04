@@ -92,6 +92,16 @@ class ParameterSeparatorState:
         return "}" if self.is_last else ","
 
 
+@dataclass(frozen=True)
+class ParameterValueState:
+    """Dispatch state for one schema-declared parameter value type."""
+
+    type_name: str
+
+    def handler(self, registry: ValueHandlerRegistry) -> ValueHandler:
+        return registry.get(self.type_name)
+
+
 class ValueHandler(Protocol):
     """Interface implemented by one schema value-type grammar."""
 
@@ -680,7 +690,8 @@ class ConstrainedDecoder(BaseModel):
                 structure_prompt, output, key_state.literal
             )
             value_type = definition["type"]
-            self._ensure_value_handlers().get(value_type)
+            value_state = ParameterValueState(value_type)
+            value_state.handler(self._ensure_value_handlers())
             if value_type == "string":
                 self._emit_literal_constrained(structure_prompt, output, '"')
                 regex_kind = None

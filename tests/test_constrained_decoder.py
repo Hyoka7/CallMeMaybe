@@ -11,6 +11,7 @@ from src.constrained_decoder import (
     Vocabulary,
     UnsupportedTypeError,
     LiteralState,
+    ParameterValueState,
 )
 
 
@@ -92,6 +93,13 @@ class TrieNodeTests(unittest.TestCase):
         decoder = string_decoder(FakeStringModel([0]))
         with self.assertRaises(UnsupportedTypeError):
             decoder._ensure_value_handlers().get("date")
+
+    def test_parameter_value_state_dispatches_through_registry(self) -> None:
+        decoder = string_decoder(FakeStringModel([0]))
+        handler = ParameterValueState("string").handler(
+            decoder._ensure_value_handlers()
+        )
+        self.assertIsNotNone(handler)
 
     def test_literal_state_accepts_only_prefix_tokens(self) -> None:
         state = LiteralState('"prompt": "')
