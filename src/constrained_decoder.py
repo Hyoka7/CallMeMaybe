@@ -613,19 +613,19 @@ class ConstrainedDecoder(BaseModel):
         user_input: str,
     ) -> None:
         """Generate one schema-constrained argument object."""
-        self._append(structure_prompt, output, "{")
+        self._emit_literal_constrained(structure_prompt, output, "{")
         for index, (name, definition) in enumerate(
             function.parameters.items()
         ):
             if index:
-                self._append(structure_prompt, output, ",")
-            self._append(
+                self._emit_literal_constrained(structure_prompt, output, ",")
+            self._emit_literal_constrained(
                 structure_prompt, output, json.dumps(name) + ": "
             )
             value_type = definition["type"]
             self._ensure_value_handlers().get(value_type)
             if value_type == "string":
-                self._append(structure_prompt, output, '"')
+                self._emit_literal_constrained(structure_prompt, output, '"')
                 regex_kind = None
                 if self._is_regex_argument(function, name):
                     regex_kind = self._regex_kind(
@@ -654,7 +654,7 @@ class ConstrainedDecoder(BaseModel):
                 output.extend(self._number(structure_prompt, end_text))
             elif value_type == "boolean":
                 output.extend(self._boolean(structure_prompt))
-        self._append(structure_prompt, output, "}")
+        self._emit_literal_constrained(structure_prompt, output, "}")
 
     def generate_call(
         self,
