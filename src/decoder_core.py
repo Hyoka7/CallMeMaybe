@@ -1,7 +1,46 @@
-"""Compatibility exports for the decoder implementation.
+"""Compatibility exports for the responsibility-specific decoder modules."""
 
-The generation engine is kept separate from public state and value-handler
-modules so that orchestration imports remain stable during refactoring.
-"""
+from src.decoder_errors import (
+    DecoderError,
+    NoValidTokenError,
+    UnsupportedTypeError,
+)
+from src.generation_engine import ConstrainedDecoder
+from src.states import (
+    END,
+    FunctionNameState,
+    LiteralResult,
+    LiteralState,
+    ParameterKeyState,
+    ParameterSeparatorState,
+    ParameterValueState,
+    TrieNode,
+)
+from src.value_generation import (
+    NUMBER_COMPLETE,
+    NUMBER_END_MARGIN,
+    NUMBER_PREFIX,
+)
+from src.value_handlers import ValueHandler, ValueHandlerRegistry
+from src.vocabulary import Vocabulary
 
-from src.generation_engine import *  # noqa: F401,F403
+__all__ = [
+    "END",
+    "NUMBER_COMPLETE",
+    "NUMBER_END_MARGIN",
+    "NUMBER_PREFIX",
+    "ConstrainedDecoder",
+    "DecoderError",
+    "FunctionNameState",
+    "LiteralResult",
+    "LiteralState",
+    "NoValidTokenError",
+    "ParameterKeyState",
+    "ParameterSeparatorState",
+    "ParameterValueState",
+    "TrieNode",
+    "UnsupportedTypeError",
+    "ValueHandler",
+    "ValueHandlerRegistry",
+    "Vocabulary",
+]

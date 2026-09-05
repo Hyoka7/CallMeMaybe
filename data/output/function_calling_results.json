@@ -17,9 +17,9 @@
   },
   {
     "prompt": "Greet shrek",
-    "name": "fn_greet",
+    "name": "ft_strlen",
     "parameters": {
-      "name": "shrek"
+      "source_string": "shrek"
     }
   },
   {
@@ -79,7 +79,7 @@
     "parameters": {
       "source_string": "Programming is fun",
       "regex": "([aeiouAEIOU])",
-      "replacement": "*"
+      "replacement": "**"
     }
   },
   {

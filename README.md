@@ -10,6 +10,22 @@ The decoder constrains generation token by token instead of relying on prompting
 
 The repository is deliberately split into a model-facing layer and a deterministic validation layer. `src/loader.py` validates input files, `src/prompt.py` builds the compiler-style Qwen prompt, `src/constrained_decoder.py` performs decoding, and `src/json_to_file.py` writes the result array. The SDK is treated as an external dependency: the application calls only its public encoding, decoding, vocabulary-path, and logits methods.
 
+## Source layout
+
+- `generation_engine.py`: function-call orchestration and parameter ordering.
+- `token_generation.py`: shared model context, fixed JSON fragments and trie selection.
+- `regex_generation.py`: regex argument identification, intent and completion rules.
+- `value_generation.py`: JSON string, number and boolean generation.
+- `value_handlers.py`: handler protocol, registry and built-in adapters.
+- `states.py`: immutable generation states and token trie.
+- `vocabulary.py`: tokenizer vocabulary and token masks.
+- `decoder_errors.py`: decoding exceptions.
+- `constrained_decoder.py` and `decoder_core.py`: stable compatibility exports.
+
+The internal generation classes build on token selection, regex support and
+value grammars in that order. `ConstrainedDecoder` owns call orchestration.
+State and handler modules use type-only decoder imports to avoid circular imports.
+
 ## Instructions
 
 Requirements: Python 3.10+ and [uv](https://docs.astral.sh/uv/).
