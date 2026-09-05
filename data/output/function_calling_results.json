@@ -79,7 +79,7 @@
     "parameters": {
       "source_string": "Programming is fun",
       "regex": "([aeiouAEIOU])",
-      "replacement": "asterisk"
+      "replacement": "*"
     }
   },
   {
