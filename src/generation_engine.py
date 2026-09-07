@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import PrivateAttr
 
+from src.decoder_errors import DecoderError
 from src.model import JsonFunction
 from src.states import (
     ParameterKeyState,
@@ -28,9 +29,9 @@ class ConstrainedDecoder(ValueGeneration):
 
     _value_handlers: ValueHandlerRegistry = PrivateAttr()
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, _context: Any) -> None:
         """Install built-in handlers while keeping the registry extensible."""
-        del __context
+        del _context
         registry = ValueHandlerRegistry()
         registry.register("string", _StringHandler())
         registry.register("number", _NumberHandler())
@@ -82,6 +83,17 @@ class ConstrainedDecoder(ValueGeneration):
                 value = self._string(
                     structure_prompt, regex_kind, user_input
                 )
+                if self._is_replacement_argument(function, name):
+                    replacement = self.refine_replacement(
+                        value, self._literal_candidates(user_input)
+                    )
+                    if replacement != value:
+                        del structure_prompt[value_start:]
+                        structure_prompt.extend(
+                            self.model.encode(replacement)[0].tolist()
+                        )
+                        structure_prompt.append(self.vocabulary.quote)
+                        value = replacement
                 if regex_kind is not None:
                     refined = self._refine_regex(value)
                     if refined != value:
@@ -144,7 +156,7 @@ class ConstrainedDecoder(ValueGeneration):
         call = json.loads(self.model.decode(output))
         parameters = call.get("parameters")
         if not isinstance(parameters, dict):
-            raise TypeError("Generated parameters are not an object")
+            raise DecoderError("Generated parameters are not an object")
         if set(parameters) != set(selected.parameters):
-            raise RuntimeError("Generated arguments do not match schema")
+            raise DecoderError("Generated arguments do not match schema")
         return selected, parameters

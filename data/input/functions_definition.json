@@ -43,7 +43,7 @@
     "description": "Calculate the square root of a number.",
     "parameters": {
       "a": {
-        "type": "integer"
+        "type": "number"
       }
     },
     "returns": {
@@ -67,43 +67,5 @@
     "returns": {
       "type": "string"
     }
-  },
-  {
-    "name": "fn_is_capitalized",
-    "description": "Judge if a given string is capitalized or not",
-    "parameters": {
-      "source_string": {
-        "type": "string"
-      }
-    },
-    "returns": {
-      "type": "boolean"
-    }
-  },
-  {
-    "name": "ft_strlen",
-    "description": "Return length of given string",
-    "parameters": {
-      "source_string": {
-        "type": "string"
-      }
-    },
-    "returns": {
-      "type": "number"
-    }
-  },
-  {
-    "name": "ft_strlen",
-    "description": "Return length of given string",
-    "parameters": {
-      "source_string": {
-        "type": "string"
-      }
-    },
-    "returns": {
-      "type": "number"
-    }
   }
 ]
-
-

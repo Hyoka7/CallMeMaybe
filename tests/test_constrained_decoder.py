@@ -16,6 +16,7 @@ from src.constrained_decoder import (
 from src.model import JsonFunction
 from src.model import JsonInput
 from src.prompt import build_call_prompt
+from src.regex_generation import RegexGeneration
 
 
 class FakeStringModel:
@@ -39,6 +40,22 @@ class FakeStringModel:
         logits = [0.0] * 4
         logits[selected] = 10.0
         return logits
+
+
+class FakeLiteralModel:
+    """Track logits calls while emitting one fixed literal token."""
+
+    def __init__(self) -> None:
+        self.logits_calls = 0
+
+    def encode(self, text: str) -> NDArray[np.int_]:
+        del text
+        return np.array([[0]])
+
+    def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
+        del input_ids
+        self.logits_calls += 1
+        return [10.0]
 
 
 def string_vocabulary() -> Vocabulary:
@@ -126,6 +143,21 @@ class TrieNodeTests(unittest.TestCase):
         )
         self.assertIn("do not add parentheses", prompt)
 
+    def test_repeated_symbol_replacement_is_reduced_to_one_unit(self) -> None:
+        self.assertEqual(
+            RegexGeneration.refine_replacement("**", []), "*"
+        )
+
+    def test_wrapped_symbol_replacement_is_unwrapped(self) -> None:
+        self.assertEqual(
+            RegexGeneration.refine_replacement("(*)", []), "*"
+        )
+
+    def test_explicit_replacement_literal_is_preserved(self) -> None:
+        self.assertEqual(
+            RegexGeneration.refine_replacement("**", ["**"]), "**"
+        )
+
     def test_literal_state_accepts_only_prefix_tokens(self) -> None:
         state = LiteralState('"prompt": "')
         self.assertTrue(state.consume('"prompt":').remaining == ' "')
@@ -141,6 +173,29 @@ class TrieNodeTests(unittest.TestCase):
         candidates = decoder.literal_candidates(LiteralState('x'))
         self.assertIn(2, candidates)
         self.assertNotIn(1, candidates)
+
+    def test_fixed_literal_avoids_model_logits(self) -> None:
+        model = FakeLiteralModel()
+        vocabulary = Vocabulary(
+            strs=("{",),
+            str_mask=np.array([True]),
+            lead_space=np.array([False]),
+            close_mask=np.array([False]),
+            close_prefix=(None,),
+            quote=0,
+            number_tokens={0: "1"},
+            special_tokens={},
+        )
+        decoder = ConstrainedDecoder.model_construct(
+            model=model, vocabulary=vocabulary
+        )
+        prompt: list[int] = []
+        output: list[int] = []
+
+        decoder._emit_literal_constrained(prompt, output, "{")
+
+        self.assertEqual(model.logits_calls, 0)
+        self.assertEqual(output, [0])
 
 
 class StringDecoderTests(unittest.TestCase):

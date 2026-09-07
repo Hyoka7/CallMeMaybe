@@ -1,9 +1,11 @@
-import json
 import sys
+
+from tqdm import tqdm
 
 from llm_sdk import Small_LLM_Model
 from src.cli import parse_args
 from src.constrained_decoder import ConstrainedDecoder, Vocabulary
+from src.decoder_errors import DecoderError
 from src.json_to_file import write_results
 from src.loader import load_functions, load_prompts
 from src.model import JsonResult
@@ -19,20 +21,23 @@ def run() -> int:
     vocabulary = Vocabulary.from_sdk(model)
     decoder = ConstrainedDecoder(model=model, vocabulary=vocabulary)
     results: list[JsonResult] = []
-    for item in prompts.prompts:
+    for item in tqdm(
+        prompts.prompts,
+        desc="Generating calls",
+        unit="prompt",
+    ):
         selected, parameters = decoder.generate_call(
             build_call_prompt(funcs, item.prompt),
             funcs.func,
             item.prompt,
         )
-        print(f"{item.prompt} -> {selected.name}")
-        print(json.dumps(parameters))
         results.append(JsonResult(
             prompt=item.prompt,
             name=selected.name,
             parameters=parameters,
         ))
     write_results(args.output, results)
+    print(f"Result successfully saved to '{args.output}'.")
     return 0
 
 
@@ -46,7 +51,7 @@ def main() -> int:
     except MemoryError:
         print("Aborting: insufficient memory.", file=sys.stderr)
         return 1
-    except Exception as err:
+    except (ValueError, OSError, DecoderError) as err:
         print(f"Aborting: {err}", file=sys.stderr)
         return 1
 

@@ -1,7 +1,7 @@
 """Schema value-handler interface, registry and built-in adapters."""
 from __future__ import annotations
 
-from typing import Any, Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from src.decoder_errors import UnsupportedTypeError
 from src.model import JsonFunction

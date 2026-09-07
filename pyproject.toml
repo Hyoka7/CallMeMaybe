@@ -8,6 +8,8 @@ dependencies = [
     "llm-sdk",
     "numpy>=2.2.6",
     "pydantic>=2.13.4",
+    "tqdm>=4.69.0",
+    "types-tqdm>=4.70.0.20260906",
 ]
 
 [tool.uv.workspace]

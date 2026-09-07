@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
 from llm_sdk import Small_LLM_Model
+from src.decoder_errors import DecoderError
 
 
 class Vocabulary(BaseModel):
@@ -33,7 +34,7 @@ class Vocabulary(BaseModel):
             data = json.load(file)
         raw_vocab = data.get("model", {}).get("vocab")
         if not isinstance(raw_vocab, dict):
-            raise TypeError("Tokenizer file has no model.vocab mapping")
+            raise DecoderError("Tokenizer file has no model.vocab mapping")
         token_ids = [
             token_id for token_id in raw_vocab.values()
             if isinstance(token_id, int)
@@ -83,9 +84,11 @@ class Vocabulary(BaseModel):
                 number_ids[token_id] = text
         quote_ids = model.encode('"')[0].tolist()
         if len(quote_ids) != 1:
-            raise ValueError("Closing quote must be one token")
+            raise DecoderError("Closing quote must be one token")
         if not string_mask.any() or not close_mask.any() or not number_ids:
-            raise ValueError("Could not derive token classes from vocabulary")
+            raise DecoderError(
+                "Could not derive token classes from vocabulary"
+            )
         return cls(
             strs=tuple(strings),
             str_mask=string_mask,

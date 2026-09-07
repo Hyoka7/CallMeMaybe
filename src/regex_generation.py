@@ -15,6 +15,59 @@ class RegexGeneration(TokenGeneration):
     _regex_roles: dict[tuple[str, tuple[str, ...]], str | None] = PrivateAttr(
         default_factory=dict
     )
+    _replacement_roles: dict[
+        tuple[str, tuple[str, ...]], str | None
+    ] = PrivateAttr(default_factory=dict)
+
+    def _is_replacement_argument(
+        self, function: JsonFunction, parameter_name: str
+    ) -> bool:
+        """Choose the argument that stores replacement text."""
+        string_names = tuple(
+            name for name, definition in function.parameters.items()
+            if definition["type"] == "string"
+        )
+        cache_key = (function.description, string_names)
+        if cache_key in self._replacement_roles:
+            return self._replacement_roles[cache_key] == parameter_name
+        prompt = (
+            "Choose which string argument stores the replacement value "
+            "inserted for every match. Do not choose source text, matching "
+            "patterns, names, or other values. Choose NONE if there is no "
+            "replacement argument.\n"
+            f"Function purpose: {function.description}\n"
+            f"String arguments: {', '.join(string_names)}\n"
+            'Replacement argument: "'
+        )
+        selected = self._trie_choice(prompt, list(string_names) + ["NONE"])
+        self._replacement_roles[cache_key] = (
+            None if selected == "NONE" else selected
+        )
+        return selected == parameter_name
+
+    @staticmethod
+    def refine_replacement(
+        value: str, explicit_literals: list[str]
+    ) -> str:
+        """Reduce an inferred single-symbol replacement to one unit."""
+        if value in explicit_literals:
+            return value
+        if (
+            len(value) > 1
+            and len(set(value)) == 1
+            and not value[0].isalnum()
+            and not value[0].isspace()
+        ):
+            return value[0]
+        pairs = {"(": ")", "[": "]", "{": "}"}
+        if (
+            len(value) == 3
+            and pairs.get(value[0]) == value[2]
+            and not value[1].isalnum()
+            and not value[1].isspace()
+        ):
+            return value[1]
+        return value
 
     def _is_regex_argument(
         self, function: JsonFunction, parameter_name: str

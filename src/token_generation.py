@@ -5,7 +5,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict
 
 from llm_sdk import Small_LLM_Model
-from src.decoder_errors import NoValidTokenError
+from src.decoder_errors import DecoderError, NoValidTokenError
 from src.states import (
     END, FunctionNameState, LiteralResult, LiteralState, TrieNode,
 )
@@ -44,8 +44,6 @@ class TokenGeneration(BaseModel):
     ) -> None:
         """Emit a fixed fragment using tokens valid for its state."""
         state = LiteralState(literal)
-        # Fixed schema fragments normally have one deterministic token path.
-        # Validate that path once, avoiding an expensive model call per token.
         encoded = self.model.encode(literal)[0].tolist()
         fast_state = state
         fast_valid = True
@@ -128,7 +126,7 @@ class TokenGeneration(BaseModel):
             node = node.children[chosen]
             if chosen == END:
                 if node.value is None:
-                    raise RuntimeError("Trie ended without a value")
+                    raise DecoderError("Trie ended without a value")
                 return node.value
             prompt_ids.append(chosen)
             if output_ids is not None:

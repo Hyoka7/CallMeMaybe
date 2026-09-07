@@ -7,6 +7,7 @@ from typing import cast
 
 import numpy as np
 
+from src.decoder_errors import NoValidTokenError
 from src.regex_generation import RegexGeneration
 from src.states import END
 
@@ -165,7 +166,7 @@ class ValueGeneration(RegexGeneration):
                 ))
             }
             if not valid:
-                raise RuntimeError("No valid number token")
+                raise NoValidTokenError("No valid number token")
             candidates = set(valid)
             if NUMBER_COMPLETE.fullmatch(text) and (
                 not integer or re.fullmatch(r"-?(?:0|[1-9][0-9]*)", text)
@@ -189,7 +190,7 @@ class ValueGeneration(RegexGeneration):
             output.append(chosen)
             prompt.append(chosen)
             text += self.vocabulary.number_tokens[chosen]
-        raise RuntimeError("Number value did not terminate")
+        raise NoValidTokenError("Number value did not terminate")
 
     def _boolean(self, prompt: list[int]) -> list[int]:
         """Choose one JSON boolean literal from model logits."""

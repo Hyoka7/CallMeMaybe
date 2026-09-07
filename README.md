@@ -80,7 +80,7 @@ root `{`
 
 `LiteralState` represents a fixed fragment that still has characters to consume. For every candidate vocabulary token, the decoder simulates its decoded text against a copy of the state. A token is valid only if it consumes a prefix without violating the fragment. The selected token is then appended to both the model context and output buffer, keeping them synchronized.
 
-When a fixed fragment has a single valid tokenizer path, that path is validated once and appended without repeated model calls. If tokenization is ambiguous, the decoder obtains logits, masks every invalid ID to negative infinity, and chooses the highest remaining score. Thus the fast path is an optimization of the same constraint, not a separate unvalidated output path.
+When a fixed fragment has a valid tokenizer path, that path is checked against `LiteralState` and appended without a model call. If validation fails, the decoder obtains logits and chooses only from tokens that can advance the required literal.
 
 ### 3. Function selection
 
@@ -111,10 +111,11 @@ Generation ends only after the terminal root brace. The complete text is parsed 
 - Only public `llm_sdk` methods are used; `LLM_SDK` is not modified.
 - Fixed literals are deterministic but still pass through the same state validator.
 - Semantic interpretation (for example, whether a string is a regex) is kept outside JSON grammar so syntax guarantees remain reusable.
+- Replacement arguments are identified independently from regex patterns. Inferred repeated or wrapped single-symbol values are reduced to one replacement unit, while explicitly quoted literals are preserved.
 
 ## Performance and reliability
 
-Token masking prevents malformed JSON, extra keys, missing required parameters, and trailing prose. Deterministic structural token paths avoid needless model calls, while value decisions still use model logits. The dominant cost is the number of value-generation steps and vocabulary scans; vocabulary masks are cached and fixed fragments use the fast path. The target is 90%+ function/argument accuracy, 100% parseable schema-compliant JSON, and completion within five minutes on standard hardware. Accuracy depends on the model and prompt quality; constraints guarantee structure and types, not the truth of a semantically incorrect answer.
+Token masking prevents malformed JSON, extra keys, missing required parameters, and trailing prose. Fixed fragments normally use the validated fast path, while semantic value decisions use model logits. Vocabulary masks are cached for the whole batch. The target is 90%+ function/argument accuracy, 100% parseable schema-compliant JSON, and completion within five minutes on standard hardware. Accuracy depends on the model and prompt quality; constraints guarantee structure and types, not the truth of a semantically incorrect answer.
 
 ## Challenges faced
 
@@ -268,7 +269,7 @@ Output is written only after all prompts have been decoded and validated. A fail
 
 **Model download fails.** Confirm network access to Hugging Face or pre-populate the local model cache, then rerun `uv run -m src`. The decoder itself does not download or modify model files.
 
-**Generation is slow.** The first model load is usually the largest fixed cost. Subsequent costs come from logits calls for value and trie decisions. Keep the vocabulary object alive for the whole batch; do not reconstruct it per prompt. Fixed JSON fragments already use a validated deterministic fast path.
+**Generation is slow.** The first model load is usually the largest fixed cost. Subsequent costs come mainly from function and value decisions. Keep the vocabulary object alive for the whole batch; fixed JSON fragments use the validated fast path.
 
 **An unsupported type is reported.** Add a handler with `register_value_handler()` before processing definitions, or change the input schema to one of the built-in types. Do not bypass validation by inserting arbitrary values after decoding.
 
