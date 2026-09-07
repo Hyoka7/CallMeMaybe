@@ -13,8 +13,7 @@ from src.constrained_decoder import (
     UnsupportedTypeError,
     Vocabulary,
 )
-from src.model import JsonFunction
-from src.model import JsonInput
+from src.model import JsonFunction, JsonInput
 from src.prompt import build_call_prompt
 from src.regex_generation import RegexGeneration
 

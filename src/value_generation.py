@@ -13,8 +13,9 @@ from src.states import END
 
 NUMBER_END_MARGIN = 3.0
 NUMBER_PREFIX = re.compile(
-    r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+-]?[0-9]*)?"
+    r"-?(?:(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+-]?[0-9]*)?)?"
 )
+INTEGER_PREFIX = re.compile(r"-?(?:(?:0|[1-9][0-9]*))?")
 NUMBER_COMPLETE = re.compile(
     r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"
 )
@@ -161,9 +162,10 @@ class ValueGeneration(RegexGeneration):
                 for token_id, token_text
                 in self.vocabulary.number_tokens.items()
                 if NUMBER_PREFIX.fullmatch(text + token_text)
-                and (not integer or re.fullmatch(
-                    r"-?(?:0|[1-9][0-9]*)", text + token_text
-                ))
+                and (
+                    not integer
+                    or INTEGER_PREFIX.fullmatch(text + token_text)
+                )
             }
             if not valid:
                 raise NoValidTokenError("No valid number token")

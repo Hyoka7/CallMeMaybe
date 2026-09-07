@@ -7,7 +7,11 @@ from pydantic import BaseModel, ConfigDict
 from llm_sdk import Small_LLM_Model
 from src.decoder_errors import DecoderError, NoValidTokenError
 from src.states import (
-    END, FunctionNameState, LiteralResult, LiteralState, TrieNode,
+    END,
+    FunctionNameState,
+    LiteralResult,
+    LiteralState,
+    TrieNode,
 )
 from src.vocabulary import Vocabulary
 

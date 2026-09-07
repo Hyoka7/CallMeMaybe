@@ -1,312 +1,451 @@
 *This project has been created as part of the 42 curriculum by hfujisad.*
 
-# call me maybe
+# Call Me Maybe
 
 ## Description
 
-`call me maybe` translates natural-language requests into JSON function calls containing the original prompt, selected function name, and typed parameters. It uses Qwen/Qwen3-0.6B through the supplied `llm_sdk` package.
+Call Me Maybe converts natural-language requests into structured JSON function calls. Given a list of available functions and a user prompt, it selects one function and generates values for every parameter declared by that function.
 
-The decoder constrains generation token by token instead of relying on prompting alone, so output follows `functions_definition.json` and contains no extra prose.
-
-The repository is deliberately split into a model-facing layer and a deterministic validation layer. `src/loader.py` validates input files, `src/prompt.py` builds the compiler-style Qwen prompt, `src/constrained_decoder.py` performs decoding, and `src/json_to_file.py` writes the result array. The SDK is treated as an external dependency: the application calls only its public encoding, decoding, vocabulary-path, and logits methods.
-
-## Source layout
-
-- `generation_engine.py`: function-call orchestration and parameter ordering.
-- `token_generation.py`: shared model context, fixed JSON fragments and trie selection.
-- `regex_generation.py`: regex argument identification, intent and completion rules.
-- `value_generation.py`: JSON string, number and boolean generation.
-- `value_handlers.py`: handler protocol, registry and built-in adapters.
-- `states.py`: immutable generation states and token trie.
-- `vocabulary.py`: tokenizer vocabulary and token masks.
-- `decoder_errors.py`: decoding exceptions.
-- `constrained_decoder.py` and `decoder_core.py`: stable compatibility exports.
-
-The internal generation classes build on token selection, regex support and
-value grammars in that order. `ConstrainedDecoder` owns call orchestration.
-State and handler modules use type-only decoder imports to avoid circular imports.
-
-## Instructions
-
-Requirements: Python 3.10+ and [uv](https://docs.astral.sh/uv/).
-
-```bash
-uv sync
-uv run python -m src
-```
-
-Custom files:
-
-```bash
-uv run python -m src \
-  --functions_definition data/input/functions_definition.json \
-  --input data/input/function_calling_tests.json \
-  --output data/output/function_calling_results.json
-```
-
-Common Makefile commands are `make install`, `make run`, `make debug`, `make lint`, and `make clean`.
-
-The first run may download Qwen/Qwen3-0.6B. A network or model-cache failure is reported as a readable command error; it does not produce a partial output file.
-
-## Input and output
-
-The input test file contains objects with a `prompt` string. The function-definition file contains function names, descriptions, parameter schemas, and return types.
-
-Output is a JSON array with exactly `prompt`, `name`, and `parameters`:
-
-```json
-[{"prompt":"What is the sum of 2 and 3?","name":"fn_add_numbers","parameters":{"a":2.0,"b":3.0}}]
-```
-
-## Algorithm: constrained decoding
-
-### 1. Vocabulary preparation
-
-`Vocabulary.from_sdk()` reads the tokenizer JSON returned by `get_path_to_tokenizer_file()`. It records decoded text for each token and derives masks for safe string fragments, leading-space fragments, quote/close fragments, numeric fragments, and special escaped fragments. This work is done once per process rather than once per prompt.
-
-### 2. State-driven output
-
-The response is generated through this explicit path:
-
-```text
-root `{`
-  -> exact key `"prompt"` and exact prompt value
-  -> exact key `"name"`
-  -> function-name trie
-  -> exact key `"parameters"` and parameters `{`
-  -> parameter key -> typed value -> separator (repeat)
-  -> parameters `}` -> root `}` -> terminal
-```
-
-`LiteralState` represents a fixed fragment that still has characters to consume. For every candidate vocabulary token, the decoder simulates its decoded text against a copy of the state. A token is valid only if it consumes a prefix without violating the fragment. The selected token is then appended to both the model context and output buffer, keeping them synchronized.
-
-When a fixed fragment has a valid tokenizer path, that path is checked against `LiteralState` and appended without a model call. If validation fails, the decoder obtains logits and chooses only from tokens that can advance the required literal.
-
-### 3. Function selection
-
-Each supplied function name is tokenized into a `TrieNode` tree. A terminal marker is stored at the end of every name. At a shared node, both the terminal marker and child token remain candidates; this handles names such as `fn_add` and `fn_add_numbers` without guessing or prefix truncation. The LLM therefore chooses the function, while the trie guarantees that the choice belongs to the supplied schema.
-
-### 4. Typed values
-
-`ParameterValueState` resolves a schema type through `ValueHandlerRegistry`. The built-in handlers enforce JSON string, number, and boolean grammars. String generation rejects unsafe quotes and backslashes unless they form valid JSON escapes and always requires a closing quote. Number generation follows JSON's sign/integer/fraction/exponent rules and cannot terminate after an incomplete prefix such as `-`, `1.`, or `1e`. Boolean generation follows the `true`/`false` literal trie.
-
-The registry is intentionally open for extension:
-
-```python
-decoder.register_value_handler("date", DateHandler())
-```
-
-A handler owns only value syntax and conversion. It does not emit commas, keys, or braces; those remain controlled by the structural state machine.
-
-### 5. Final validation
-
-Generation ends only after the terminal root brace. The complete text is parsed with `json.loads`; the result model rejects missing or extra top-level keys, and the selected function schema checks parameter names and types. Any empty candidate set, unsupported type, malformed tokenizer metadata, or incomplete value raises a specific decoder error instead of silently repairing output.
-
-## Design decisions
-
-- Structural states and typed value handlers are independent.
-- `ValueHandlerRegistry` allows future types without changing the root state machine.
-- Function selection uses constrained model logits, not keyword heuristics.
-- The original prompt is emitted as an exact JSON-escaped value.
-- Only public `llm_sdk` methods are used; `LLM_SDK` is not modified.
-- Fixed literals are deterministic but still pass through the same state validator.
-- Semantic interpretation (for example, whether a string is a regex) is kept outside JSON grammar so syntax guarantees remain reusable.
-- Replacement arguments are identified independently from regex patterns. Inferred repeated or wrapped single-symbol values are reduced to one replacement unit, while explicitly quoted literals are preserved.
-
-## Performance and reliability
-
-Token masking prevents malformed JSON, extra keys, missing required parameters, and trailing prose. Fixed fragments normally use the validated fast path, while semantic value decisions use model logits. Vocabulary masks are cached for the whole batch. The target is 90%+ function/argument accuracy, 100% parseable schema-compliant JSON, and completion within five minutes on standard hardware. Accuracy depends on the model and prompt quality; constraints guarantee structure and types, not the truth of a semantically incorrect answer.
-
-## Challenges faced
-
-Token boundaries, shared function-name prefixes, regex termination, and reliable stopping were the main challenges. A token may contain punctuation and part of a key at once, so character-by-character assumptions were replaced with whole-token state simulation. Trie terminal markers solve prefix collisions. The string handler separates safe content, escaped content, and closing-quote candidates; regex completion is checked without allowing matched source text or replacement text to leak into the pattern. Finally, explicit terminal states prevent the model from continuing after the final `}`.
-
-## Testing strategy
-
-Tests cover trie terminal/continuation behavior, literal states, token candidates, string escaping, handler registration, unsupported types, JSON writing, and command error handling.
-
-The tests use small deterministic model doubles for state-level behavior, then exercise the real CLI separately. This keeps edge cases reproducible while preserving an end-to-end path for file loading, model construction, decoding, Pydantic validation, and output writing. Tests intentionally include emptyex3内で、super()関数が利用されていたため、該当箇所以外はokということでこのような結果とさせていただきます。コード自体は動作は問題なく、またそれぞれの実装方法などに理由があって良かったと思います。課題文の書かれ方が正直曖昧な点があるのも理解できますが、super()が「組み込み関数」セクションに含まれていることなどを踏まえ、ここでは使用禁止であると判断させていただきました。int(temp)が2回書かれている点だけ修正お忘れなく。
- strings, quotes, backslashes, common function-name prefixes, and future/custom value types.
-
-```bash
-uv run python -m unittest discover -s tests -v
-make lint
-uv run -m src
-```
-
-## Resources and AI usage
-
-- [Python `json` documentation](https://docs.python.org/3/library/json.html)
-- [Pydantic documentation](https://docs.pydantic.dev/)
-- [uv documentation](https://docs.astral.sh/uv/)
-- `en.subject.pdf` (project brief)
-- The supplied `llm_sdk` public API
-
-AI assistance was used for architecture discussion, token-boundary and termination debugging, test drafting, and documentation. Suggestions were reviewed, adapted to the project constraints, and verified with local tests. AI did not modify `LLM_SDK`.
-
-## Repository layout
-
-```text
-.
-├── data/input/
-│   ├── function_calling_tests.json       # natural-language requests
-│   └── functions_definition.json         # callable functions and schemas
-├── data/output/
-│   └── function_calling_results.json     # generated result array
-├── llm_sdk/                              # supplied SDK workspace
-├── src/
-│   ├── cli.py                            # command-line arguments/default paths
-│   ├── constrained_decoder.py            # vocabulary, states, tries, handlers
-│   ├── json_to_file.py                   # atomic result serialization
-│   ├── loader.py                          # Pydantic-backed input loading
-│   ├── main.py                            # application orchestration
-│   ├── model.py                           # input and output models
-│   └── prompt.py                          # Qwen chat/compiler prompt
-├── tests/                                 # deterministic unit tests
-├── Makefile
-└── pyproject.toml
-```
-
-The command-line layer intentionally contains little generation logic. This makes the decoder testable with a small model double and keeps file errors separate from model errors.
-
-## End-to-end walkthrough
-
-For each item in the input array, `src.main.run()` performs these operations:
-
-1. Parse command-line paths and construct `Small_LLM_Model`.
-2. Load and validate function definitions and prompts with Pydantic.
-3. Build one immutable vocabulary classification from the SDK tokenizer file.
-4. Build a compiler-style prompt containing all available function descriptions and the user request.
-5. Encode the prompt into the SDK's input-ID representation.
-6. Generate the complete JSON call through the constrained decoder.
-7. Decode and parse the output, then verify that the selected function's parameter set matches exactly.
-8. Append a validated `JsonResult` and write all results as one JSON array.
-
-There is no function execution in this project. The result is a description of the call that a later application could dispatch.
-
-## State transition reference
-
-| State | Allowed content | Next state | Failure condition |
-| --- | --- | --- | --- |
-| Root open | `{` | Prompt key | no valid token for `{` |
-| Prompt key | exact escaped key and colon | Prompt value | token is not a literal prefix |
-| Prompt value | exact user prompt, JSON escaped | Name key | altered or unterminated prompt |
-| Name key | exact key and colon | Function trie | wrong key or separator |
-| Function trie | tokenized supplied names | Parameters key | trie has no valid child |
-| Parameters key | exact key and colon | Parameter object | wrong key |
-| Parameter object | `{` or `}` for empty schema | Parameter key/value | invalid schema order |
-| Parameter key | next schema key only | Value handler | unknown or duplicate key |
-| Value handler | type-specific grammar | Separator | incomplete value |
-| Separator | `,` except after last value, otherwise `}` | Next key/root close | trailing comma |
-| Root close | final `}` | Terminal | any token after terminal |
-
-This table describes the contract independently of the model. The model supplies preferences among valid candidates; it never expands the valid language.
-
-## Token masking in detail
-
-At a decision point, the decoder conceptually executes the following operation:
-
-```python
-logits = model.get_logits_from_input_ids(context_ids)
-allowed = state.valid_token_ids(vocabulary)
-masked = np.full_like(logits, -np.inf)
-masked[allowed] = logits[allowed]
-token_id = int(np.argmax(masked))
-next_state = state.consume(vocabulary.text(token_id))
-```
-
-The implementation uses state copies for simulation, so rejecting a candidate never mutates the real context. Both the selected token ID and its decoded text are tracked. This is important for BPE/SentencePiece-style tokens that contain leading whitespace, punctuation, or several characters at once.
-
-The decoder treats an empty candidate set as a hard error. It does not append a quote, brace, or other “repair” token after the model has failed to produce one. This makes failures visible during development and prevents invalid output from reaching the result file.
-
-## Function-definition contract
-
-Each function definition has this shape:
+The program does not execute the selected function or answer the request directly. For example, a request to add two numbers produces a function-call description:
 
 ```json
 {
+  "prompt": "What is the sum of 2 and 3?",
   "name": "fn_add_numbers",
-  "description": "Add two numbers together and return their sum.",
   "parameters": {
-    "a": {"type": "number"},
-    "b": {"type": "number"}
-  },
-  "returns": {"type": "number"}
+    "a": 2,
+    "b": 3
+  }
 }
 ```
 
-The decoder preserves parameter insertion order. Every declared parameter is emitted exactly once. The return schema documents the eventual function result but is not emitted in the call object. Unsupported or malformed definitions are rejected before model generation begins.
+The project uses the supplied `llm_sdk` package with Qwen/Qwen3-0.6B. Because a small language model cannot reliably produce valid JSON by prompting alone, the decoder restricts the model token by token. The model chooses among valid functions and values, while the application controls the JSON structure and validates the completed result.
 
-## Adding a new value type
+## Instructions
 
-New value types should implement the handler contract and register an instance after constructing the decoder:
+### Requirements
 
-```python
-class DateHandler:
-    def generate(self, decoder, prompt, user_input, parameter_name, function):
-        # Consume only tokens representing an ISO-8601 date.
-        return generate_date_value(decoder, prompt)
+- Python 3.10 or later
+- [uv](https://docs.astral.sh/uv/)
+- Enough memory to load Qwen/Qwen3-0.6B
+- Network access on the first run, unless the model is already cached
 
-decoder.register_value_handler("date", DateHandler())
+### Installation
+
+Install the project and its development dependencies:
+
+```bash
+make install
 ```
 
-A production handler should also have focused tests for incomplete prefixes, valid termination, escaped content where applicable, and empty candidate sets. The handler must append model-context token IDs consistently with the value it returns. Structural punctuation remains outside the handler, so adding `date` cannot accidentally change comma or brace rules.
+The equivalent direct command is:
 
-## Error handling
+```bash
+uv sync
+```
 
-The CLI catches interruptions, memory exhaustion, and unexpected exceptions and returns a non-zero exit code with a short message on stderr. Typical actionable errors include:
+The project treats `llm_sdk` as a workspace dependency. The SDK is not modified by this implementation.
 
-- `FileNotFoundError`: an input, definition, or tokenizer file is missing;
-- `json.JSONDecodeError`: an input file is not valid JSON;
-- Pydantic validation errors: required keys or schema types are invalid;
-- `UnsupportedTypeError`: a parameter type has no registered handler;
-- `NoValidTokenError`: the model vocabulary cannot continue the requested state;
-- model download/configuration errors: the configured Qwen model is unavailable.
+### Running the program
 
-Output is written only after all prompts have been decoded and validated. A failed run therefore cannot be mistaken for a successful partial result.
+Run with the default files:
 
-## Troubleshooting
+```bash
+make run
+```
 
-**Model download fails.** Confirm network access to Hugging Face or pre-populate the local model cache, then rerun `uv run -m src`. The decoder itself does not download or modify model files.
+or:
 
-**Generation is slow.** The first model load is usually the largest fixed cost. Subsequent costs come mainly from function and value decisions. Keep the vocabulary object alive for the whole batch; fixed JSON fragments use the validated fast path.
+```bash
+uv run python -m src
+```
 
-**An unsupported type is reported.** Add a handler with `register_value_handler()` before processing definitions, or change the input schema to one of the built-in types. Do not bypass validation by inserting arbitrary values after decoding.
+The default paths are:
 
-**A regex value is semantically wrong.** Constrained decoding guarantees JSON syntax and the declared string type, not that a natural-language interpretation is correct. Adjust the semantic prompt/classifier policy and add a focused regression test; leave the JSON state machine unchanged.
+```text
+Function definitions: data/input/functions_definition.json
+Prompts:              data/input/function_calling_tests.json
+Results:              data/output/function_calling_results.json
+```
 
-**The output file is rejected.** Inspect the first reported JSON/Pydantic error and run the unit tests. The final validator is deliberately strict about exact top-level keys, parameter names, and types.
+Use custom paths with command-line options:
 
-## Accuracy versus structural guarantees
+```bash
+uv run python -m src \
+  --functions_definition path/to/functions.json \
+  --input path/to/prompts.json \
+  --output path/to/results.json
+```
 
-There are two separate quality dimensions:
+During generation, `tqdm` displays the number of completed prompts, elapsed time, estimated remaining time, and average time per prompt. Individual generated calls are not printed to the terminal. After every prompt succeeds, the results are written to the output file and a save-confirmation message is printed.
 
-- Structural correctness is deterministic: invalid JSON tokens, unknown function names, extra keys, missing keys, wrong primitive types, and trailing text are excluded by the decoder.
-- Semantic correctness is probabilistic: the model must understand which function and argument value the user intended. Prompt wording, function descriptions, and semantic policies influence this dimension.
+### Development commands
 
-This separation is intentional. It lets the project make a strong 100% structural guarantee without claiming that a 0.6B model understands every ambiguous request perfectly.
+```bash
+make lint
+make test
+make debug
+make clean
+```
 
-## Security and robustness considerations
+`make test` runs the complete unittest suite in verbose mode. `make lint` runs both flake8 and mypy.
 
-User prompts and function descriptions are data, not executable instructions. The program never evaluates generated text and never calls a selected function. JSON escaping prevents a prompt containing quotes or backslashes from breaking the surrounding object. Pydantic rejects extra fields in input models, while the output validator rejects extra fields in generated calls.
+## Input and Output
 
-## Reproducibility checklist
+### Prompt input
 
-Before submitting or reviewing a change:
+The prompt file is a JSON array. Every entry must contain exactly one `prompt` string:
 
-1. Use a clean virtual environment created by `uv sync`.
-2. Run `uv run python -m unittest discover -s tests -v`.
-3. Run `make lint` with the required flake8 and mypy flags.
-4. Run `uv run -m src` using the default input files.
-5. Inspect `data/output/function_calling_results.json` with a JSON parser.
-6. Confirm that `LLM_SDK` and its private attributes were not changed or accessed.
+```json
+[
+  {
+    "prompt": "What is the sum of 2 and 3?"
+  },
+  {
+    "prompt": "Greet shrek"
+  }
+]
+```
 
-## Glossary
+### Function definitions
 
-- **Token:** A vocabulary item consumed by the model; it may represent multiple characters.
-- **Logit:** The model score for one possible next token.
-- **Mask:** The set of token IDs permitted by the current state.
-- **Trie:** A prefix tree used for constrained function-name selection.
-- **Literal state:** A state that consumes one fixed JSON fragment.
-- **Value handler:** A registered grammar for one schema type.
-- **Terminal state:** The state reached immediately after the final root brace.
+The function-definition file is a JSON array. Each function contains a name, description, parameter schema, and return schema:
+
+```json
+[
+  {
+    "name": "fn_add_numbers",
+    "description": "Add two numbers together and return their sum.",
+    "parameters": {
+      "a": {"type": "number"},
+      "b": {"type": "number"}
+    },
+    "returns": {"type": "number"}
+  }
+]
+```
+
+The built-in schema types are:
+
+| Type | Generated JSON value |
+| --- | --- |
+| `string` | A JSON string with required escaping |
+| `number` | A JSON number, including fractional and exponent forms |
+| `integer` | A signed JSON integer without a fraction or exponent |
+| `boolean` | `true` or `false` |
+
+Every parameter definition and return definition must contain only its `type` field. The return schema documents the eventual function result; it is not included in the generated call.
+
+### Output format
+
+The output is one JSON array containing an entry for every input prompt:
+
+```json
+[
+  {
+    "prompt": "What is the sum of 2 and 3?",
+    "name": "fn_add_numbers",
+    "parameters": {
+      "a": 2,
+      "b": 3
+    }
+  }
+]
+```
+
+Each result contains exactly `prompt`, `name`, and `parameters`. The program writes the file only after the full batch succeeds, so a failed run does not produce a partial new result.
+
+## Algorithm Explanation
+
+### Generation pipeline
+
+For each user request, the program performs the following steps:
+
+1. Validate the function definitions and input prompts with Pydantic.
+2. Build a reusable classification of the tokenizer vocabulary.
+3. Construct a compiler-style prompt containing the available functions and the request.
+4. Emit the fixed `prompt` field and its JSON-escaped input value.
+5. Select one function name through a token-ID Trie.
+6. Emit every schema parameter in definition order.
+7. Generate each value with its type-specific grammar.
+8. Close the parameter object and root object.
+9. Decode the generated token IDs and parse them with `json.loads`.
+10. Verify that the generated parameter keys exactly match the selected schema.
+
+The generated object follows this state sequence:
+
+```text
+root `{`
+  -> fixed `"prompt"` key and exact escaped prompt value
+  -> fixed `"name"` key
+  -> constrained function-name Trie
+  -> fixed `"parameters"` key and object start
+  -> parameter key -> typed value -> separator, repeated in schema order
+  -> parameter object close
+  -> root object close
+  -> terminal
+```
+
+### Fixed JSON fragments
+
+Keys, colons, commas, braces, and the original prompt are not freely generated by the model. They are passed to `LiteralState`, which stores the remaining text of a required fragment.
+
+For the normal fast path, the decoder:
+
+1. Encodes the complete literal with the SDK tokenizer.
+2. Decodes and checks each resulting token against `LiteralState`.
+3. Appends the token sequence only if it consumes the exact fragment.
+
+This path avoids an expensive model call for deterministic JSON text. If the encoded sequence cannot be validated, the fallback path examines vocabulary tokens, keeps only tokens whose decoded text advances the literal, obtains model logits, and chooses the highest-scoring valid token. The fallback can choose a tokenization path but cannot change the required text.
+
+Two token buffers are maintained:
+
+- The context buffer contains the original model prompt plus everything generated so far.
+- The output buffer contains only the JSON call that will be decoded and saved.
+
+Both buffers receive the same generated token IDs, keeping the model context synchronized with the final output.
+
+### Function-name selection
+
+Every available function name is encoded into token IDs and inserted into a `TrieNode` tree. An `END` marker is stored after every complete name.
+
+The marker is necessary when one function name prefixes another. For example, after consuming `fn_add`, the Trie may allow either:
+
+```text
+END       -> select fn_add
+next ID   -> continue toward fn_add_numbers
+```
+
+At each branch, the model supplies logits, but only Trie children and the valid terminal choice remain selectable. A name not present in the function-definition file cannot be generated.
+
+### Typed value generation
+
+`ParameterValueState` resolves each schema type through `ValueHandlerRegistry`. The structural state machine remains responsible for keys and punctuation; value handlers own only value syntax.
+
+String generation uses vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Unsafe fragments are rejected or JSON-escaped. Quoted spans from the original request are used as literal candidates so that source text is not closed halfway through generation.
+
+Number generation maintains the text produced so far. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the same mechanism with an additional integer-only expression, excluding decimal points and exponents.
+
+Boolean generation limits the choice to the token sequences for `true` and `false`.
+
+### Regex and replacement handling
+
+For functions whose descriptions refer to regular expressions, the decoder identifies which string parameter stores the matching pattern. It then classifies the requested pattern as:
+
+- `characters` for a set of individual characters;
+- `exact` for one literal word or text value;
+- `general` for repeated categories or other regular-expression structures.
+
+The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. It also removes an unnecessary trailing `.*` when a shorter completed pattern is sufficient.
+
+Replacement parameters are identified separately. If the model infers a single-symbol replacement but emits repeated copies or wraps it in brackets, the value is reduced to one symbol. Explicitly quoted replacement literals are preserved exactly.
+
+Examples:
+
+```text
+Inferred "**"  -> "*"
+Inferred "(*)" -> "*"
+Explicit "**"  -> "**"
+```
+
+This rule operates on symbol structure and replacement role; it does not map specific words such as "asterisk" to hard-coded output values.
+
+### Final validation
+
+After the root brace is emitted, the output token IDs are decoded and parsed with `json.loads`. The decoder rejects a result if `parameters` is not an object or if its key set differs from the selected function schema. Input and output Pydantic models reject extra fields.
+
+Constraints guarantee syntax, available function names, parameter names, and primitive value types. They cannot guarantee that a small model always understands an ambiguous request correctly.
+
+## Design Decisions
+
+### Separate structure from semantics
+
+Deterministic JSON structure is generated independently from semantic values. This prevents model preferences from altering keys, punctuation, or object boundaries while preserving model-based function and argument selection.
+
+### Split the decoder by responsibility
+
+The decoder is divided into focused modules:
+
+| Module | Responsibility |
+| --- | --- |
+| `generation_engine.py` | Complete call orchestration and parameter ordering |
+| `token_generation.py` | Fixed literal emission and Trie traversal |
+| `states.py` | Literal, parameter, separator, and Trie states |
+| `vocabulary.py` | Token text, masks, numeric fragments, and quote metadata |
+| `value_handlers.py` | Type-handler protocol and registry |
+| `value_generation.py` | String, number, integer, and boolean grammars |
+| `regex_generation.py` | Regex argument roles, intent, and completion |
+| `decoder_errors.py` | Expected constrained-decoding failures |
+
+`constrained_decoder.py` and `decoder_core.py` preserve stable import paths while the implementation remains split by responsibility.
+
+### Keep the SDK unchanged
+
+The application uses only the SDK's public model construction, encode, decode, tokenizer-path, and logits interfaces. The supplied SDK is not modified, and no private SDK attributes are accessed.
+
+### Use a validated fast path for literals
+
+Calling the model for every brace, key, and separator caused the standard batch to exceed practical limits. Deterministic fragments therefore use a tokenizer path that is fully checked against the literal state before being appended. Model logits remain responsible for function and value decisions.
+
+### Expose expected errors, preserve unexpected failures
+
+The command layer converts `ValueError`, `OSError`, and `DecoderError` into readable messages and exit status `1`. `KeyboardInterrupt` returns `130`, and `MemoryError` returns `1` with a focused message. Unexpected programming errors are not swallowed by a broad `except Exception`; they retain their traceback.
+
+## Performance Analysis
+
+### Speed
+
+The main costs are model loading, logits computation for semantic choices, and string-value generation. The tokenizer vocabulary is classified once per process and reused for every prompt. Fixed JSON fragments normally avoid logits calls through the validated fast path.
+
+With the cached Qwen/Qwen3-0.6B model in offline mode, the standard 15-prompt batch completed locally in approximately 151 seconds. This is below the project's five-minute target on that machine, but execution time depends on hardware, model cache state, prompt length, and generated value length.
+
+### Accuracy
+
+Structural correctness and semantic accuracy are separate:
+
+- Structural correctness is deterministic within the supported grammar: the decoder restricts function names, JSON structure, parameter names, and primitive types.
+- Semantic accuracy is probabilistic: the 0.6B model may still choose the wrong function or infer an unintended value.
+
+Function descriptions, the compiler prompt, regex-role classification, and replacement refinement improve semantic results but do not make them mathematically guaranteed.
+
+### Reliability
+
+Malformed input is rejected before generation. Empty token candidate sets and incomplete values raise explicit decoder errors. Output is parsed and checked again before it is accepted. Files are opened through context managers, and a failed batch is not written as a successful partial result.
+
+The first run may require downloading model data. A cached model can be used with offline environment settings, but cache availability is outside the decoder's control.
+
+## Challenges Faced
+
+### Token boundaries
+
+A tokenizer token may contain several characters, leading whitespace, punctuation, or a closing quote together with preceding text. Character-by-character assumptions therefore failed. The solution was to classify decoded vocabulary text and let each state consume complete token strings.
+
+### Function-name prefixes
+
+Function names can share token prefixes. A simple greedy string comparison could select a shorter name too early. Explicit terminal nodes in the Trie allow completion and continuation to compete at the same prefix.
+
+### Number termination
+
+The decoder must distinguish incomplete prefixes such as `-`, `1.`, and `1e` from complete JSON numbers. Separate prefix and completion expressions allow valid continuation while preventing premature termination.
+
+### JSON string escaping
+
+Quotes and backslashes can make an otherwise correct model value invalid JSON. The string generator tracks safe, special, and closing tokens separately and re-encodes escaped fragments when required.
+
+### Regex completion
+
+The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, and final refinement were added to stop at a reusable pattern.
+
+### Replacement symbols
+
+Plural descriptions could lead the model to repeat a replacement symbol, while some outputs wrapped a symbol in parentheses. Replacement-role detection and symbol-structure refinement address these cases without hard-coding a vocabulary word-to-symbol mapping.
+
+### Five-minute execution target
+
+Obtaining logits for every fixed JSON token made generation too slow because the SDK recomputes the growing context. Restoring the validated literal fast path reduced the standard batch to approximately two and a half minutes without modifying the SDK.
+
+## Testing Strategy
+
+The test suite uses Python's `unittest` module and deterministic model doubles. This keeps token-level cases reproducible and avoids downloading or loading the real model during unit tests.
+
+The current tests cover:
+
+- Trie terminal and continuation behavior for shared function-name prefixes;
+- literal-state prefix acceptance, rejection, and completion;
+- vocabulary-based literal candidates;
+- the fixed-literal fast path avoiding logits calls;
+- custom value-handler registration and unknown-type errors;
+- complete-call JSON assembly and rejection of an empty function list;
+- number fractions, exponents, incomplete prefixes, and termination;
+- integer schema acceptance, negative integers, and decimal rejection;
+- both boolean literals;
+- empty strings, quote escaping, and backslash escaping;
+- regex-argument, replacement-argument, and regex-kind classification;
+- repeated, wrapped, and explicitly quoted replacement symbols;
+- valid and invalid function/prompt file loading;
+- progress reporting, result order, and all-or-nothing saving;
+- normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
+- creation and contents of the final JSON result array.
+
+There are 45 deterministic unit tests in the current suite.
+
+Run all unit tests:
+
+```bash
+make test
+```
+
+The equivalent direct command is:
+
+```bash
+uv run python -m unittest discover -s tests -v
+```
+
+Run static checks:
+
+```bash
+make lint
+```
+
+For end-to-end validation, run the default batch with the real model and parse `data/output/function_calling_results.json`. Unit tests validate deterministic contracts; the real-model run evaluates semantic accuracy and execution time.
+
+## Repository Layout
+
+```text
+.
+├── data/
+│   ├── input/
+│   │   ├── function_calling_tests.json
+│   │   └── functions_definition.json
+│   └── output/
+│       └── function_calling_results.json
+├── llm_sdk/                       # supplied SDK workspace package
+├── src/
+│   ├── __main__.py                # python -m src entry point
+│   ├── cli.py                     # command-line paths
+│   ├── constrained_decoder.py     # public compatibility exports
+│   ├── decoder_core.py            # internal compatibility exports
+│   ├── decoder_errors.py          # decoder exception hierarchy
+│   ├── generation_engine.py       # complete function-call orchestration
+│   ├── json_to_file.py            # JSON result serialization
+│   ├── loader.py                  # input loading and validation
+│   ├── main.py                    # application lifecycle and progress
+│   ├── model.py                   # Pydantic input/output models
+│   ├── prompt.py                  # Qwen compiler prompt
+│   ├── regex_generation.py        # regex and replacement semantics
+│   ├── states.py                  # generation states and Trie nodes
+│   ├── token_generation.py        # fixed literals and Trie choices
+│   ├── value_generation.py        # primitive JSON value grammars
+│   ├── value_handlers.py          # extensible type registry
+│   └── vocabulary.py              # tokenizer-derived token classes
+├── tests/
+├── Makefile
+├── pyproject.toml
+└── README.md
+```
+
+## Resources
+
+### References
+
+- The project brief: `en.subject.pdf`
+- [Python `json` documentation](https://docs.python.org/3/library/json.html)
+- [Python `re` documentation](https://docs.python.org/3/library/re.html)
+- [Python `unittest` documentation](https://docs.python.org/3/library/unittest.html)
+- [Pydantic documentation](https://docs.pydantic.dev/)
+- [NumPy documentation](https://numpy.org/doc/)
+- [tqdm documentation](https://tqdm.github.io/)
+- [uv documentation](https://docs.astral.sh/uv/)
+- The public interface and tokenizer data exposed by the supplied `llm_sdk`
+
+### AI usage
+
+AI assistance was used for:
+
+- discussing the decoder architecture and separation of responsibilities;
+- identifying token-boundary, JSON escaping, number termination, regex, and replacement edge cases;
+- drafting and reviewing deterministic unit tests;
+- analyzing performance trade-offs between per-token logits calls and validated fixed-literal output;
+- reorganizing modules and drafting documentation.
+
+All suggested changes were reviewed against the project requirements, checked with local tests and static analysis, and exercised with the real model where semantic behavior or performance required verification. The supplied SDK was not modified by AI or by the application changes.
