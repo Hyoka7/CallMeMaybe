@@ -7,12 +7,15 @@ from pydantic import BaseModel
 from src.constrained_decoder import (
     END,
     ConstrainedDecoder,
-    TrieNode,
-    Vocabulary,
-    UnsupportedTypeError,
     LiteralState,
     ParameterValueState,
+    TrieNode,
+    UnsupportedTypeError,
+    Vocabulary,
 )
+from src.model import JsonFunction
+from src.model import JsonInput
+from src.prompt import build_call_prompt
 
 
 class FakeStringModel:
@@ -83,7 +86,14 @@ class TrieNodeTests(unittest.TestCase):
         decoder = string_decoder(FakeStringModel([0]))
 
         class DateHandler:
-            def generate(self, decoder, prompt, user_input, parameter_name, function):
+            def generate(
+                self,
+                decoder: ConstrainedDecoder,
+                prompt: list[int],
+                user_input: str,
+                parameter_name: str,
+                function: JsonFunction,
+            ) -> str:
                 return "2026-09-04"
 
         decoder.register_value_handler("date", DateHandler())
@@ -100,6 +110,21 @@ class TrieNodeTests(unittest.TestCase):
             decoder._ensure_value_handlers()
         )
         self.assertIsNotNone(handler)
+
+    def test_integer_is_a_supported_schema_type(self) -> None:
+        function = JsonFunction(
+            name="fn_count",
+            description="Count items",
+            parameters={"count": {"type": "integer"}},
+            returns={"type": "integer"},
+        )
+        self.assertEqual(function.parameters["count"]["type"], "integer")
+
+    def test_prompt_requires_bare_replacement_symbol(self) -> None:
+        prompt = build_call_prompt(
+            JsonInput(func=[]), "Replace vowels with asterisks"
+        )
+        self.assertIn("do not add parentheses", prompt)
 
     def test_literal_state_accepts_only_prefix_tokens(self) -> None:
         state = LiteralState('"prompt": "')

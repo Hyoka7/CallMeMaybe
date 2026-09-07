@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-ALLOWED_TYPES = ("string", "number", "boolean")
+ALLOWED_TYPES = ("string", "number", "integer", "boolean")
 
 
 class JsonFunction(BaseModel):

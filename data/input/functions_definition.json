@@ -43,7 +43,7 @@
     "description": "Calculate the square root of a number.",
     "parameters": {
       "a": {
-        "type": "number"
+        "type": "integer"
       }
     },
     "returns": {
@@ -91,5 +91,19 @@
     "returns": {
       "type": "number"
     }
+  },
+  {
+    "name": "ft_strlen",
+    "description": "Return length of given string",
+    "parameters": {
+      "source_string": {
+        "type": "string"
+      }
+    },
+    "returns": {
+      "type": "number"
+    }
   }
 ]
+
+

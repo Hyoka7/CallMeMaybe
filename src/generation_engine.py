@@ -8,12 +8,18 @@ from pydantic import PrivateAttr
 
 from src.model import JsonFunction
 from src.states import (
-    ParameterKeyState, ParameterSeparatorState, ParameterValueState,
+    ParameterKeyState,
+    ParameterSeparatorState,
+    ParameterValueState,
 )
 from src.value_generation import ValueGeneration
 from src.value_handlers import (
-    ValueHandler, ValueHandlerRegistry,
-    _StringHandler, _NumberHandler, _BooleanHandler,
+    ValueHandler,
+    ValueHandlerRegistry,
+    _BooleanHandler,
+    _IntegerHandler,
+    _NumberHandler,
+    _StringHandler,
 )
 
 
@@ -28,6 +34,7 @@ class ConstrainedDecoder(ValueGeneration):
         registry = ValueHandlerRegistry()
         registry.register("string", _StringHandler())
         registry.register("number", _NumberHandler())
+        registry.register("integer", _IntegerHandler())
         registry.register("boolean", _BooleanHandler())
         self._value_handlers = registry
 
@@ -87,11 +94,17 @@ class ConstrainedDecoder(ValueGeneration):
                 escaped = json.dumps(value, ensure_ascii=False)[1:-1]
                 output.extend(self.model.encode(escaped)[0].tolist())
                 output.append(self.vocabulary.quote)
-            elif value_type == "number":
+            elif value_type in {"number", "integer"}:
                 end_text = (
                     "}" if index + 1 == len(function.parameters) else ","
                 )
-                output.extend(self._number(structure_prompt, end_text))
+                output.extend(
+                    self._number(
+                        structure_prompt,
+                        end_text,
+                        integer=value_type == "integer",
+                    )
+                )
             elif value_type == "boolean":
                 output.extend(self._boolean(structure_prompt))
             separator = ParameterSeparatorState(

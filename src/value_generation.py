@@ -146,7 +146,8 @@ class ValueGeneration(RegexGeneration):
             prompt.extend(self.model.encode(escaped)[0].tolist())
 
     def _number(
-        self, prompt: list[int], end_text: str, limit: int = 24
+        self, prompt: list[int], end_text: str, limit: int = 24,
+        integer: bool = False,
     ) -> list[int]:
         """Generate a terminating JSON number token by token."""
         output: list[int] = []
@@ -159,11 +160,16 @@ class ValueGeneration(RegexGeneration):
                 for token_id, token_text
                 in self.vocabulary.number_tokens.items()
                 if NUMBER_PREFIX.fullmatch(text + token_text)
+                and (not integer or re.fullmatch(
+                    r"-?(?:0|[1-9][0-9]*)", text + token_text
+                ))
             }
             if not valid:
                 raise RuntimeError("No valid number token")
             candidates = set(valid)
-            if NUMBER_COMPLETE.fullmatch(text):
+            if NUMBER_COMPLETE.fullmatch(text) and (
+                not integer or re.fullmatch(r"-?(?:0|[1-9][0-9]*)", text)
+            ):
                 candidates.add(END)
                 best_number = max(valid, key=logits.__getitem__)
                 if (

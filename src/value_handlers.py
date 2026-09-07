@@ -75,6 +75,19 @@ class _NumberHandler:
         return decoder._number(prompt, "}")
 
 
+class _IntegerHandler:
+    def generate(
+        self,
+        decoder: ConstrainedDecoder,
+        prompt: list[int],
+        user_input: str,
+        parameter_name: str,
+        function: JsonFunction,
+    ) -> Any:
+        del user_input, parameter_name, function
+        return decoder._number(prompt, "}", integer=True)
+
+
 class _BooleanHandler:
     def generate(
         self,

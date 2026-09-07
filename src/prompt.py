@@ -32,11 +32,12 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         "category must use an appropriate quantifier. An exact word remains "
         "that word. Never append matched text, source text, replacement text, "
         "explanations, or unrelated alternatives to a pattern.\n"
-        "For a replacement value, emit the exact text that should replace each "
-        "match. If the request names a symbol descriptively (for example, "
-        "'asterisks' or 'dashes'), emit the symbol itself ('*' or '-') rather "
-        "than the descriptive word. Preserve an explicitly quoted replacement "
-        "literally.\n"
+        "For a replacement value, emit the exact text that should replace "
+        "each match. "
+        "If the request names a symbol descriptively, emit that symbol "
+        "as the value itself: do not add parentheses, brackets, or "
+        "explanatory "
+        "text. Preserve an explicitly quoted replacement literally.\n"
         "For an ordinary value, copy only the requested argument value."
     )
     user = "Available functions:\n" + "\n".join(

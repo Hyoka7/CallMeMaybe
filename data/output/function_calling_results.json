@@ -17,9 +17,9 @@
   },
   {
     "prompt": "Greet shrek",
-    "name": "ft_strlen",
+    "name": "fn_greet",
     "parameters": {
-      "source_string": "shrek"
+      "name": "shrek"
     }
   },
   {
