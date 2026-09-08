@@ -22,7 +22,8 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         "assistant. Select one function and emit its input arguments in the "
         "single JSON call already started. Never execute the function.\n"
         "Before emitting each string value, silently assign that argument one "
-        "semantic role: literal input, matching pattern, or ordinary value.\n"
+        "semantic role: literal input, matching pattern, replacement value, "
+        "or ordinary value.\n"
         "For literal input, copy the user's source text exactly.\n"
         "For a matching pattern, emit only the shortest reusable regular "
         "expression representing the requested matches. Stop the value as "
@@ -31,6 +32,13 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         "category must use an appropriate quantifier. An exact word remains "
         "that word. Never append matched text, source text, replacement text, "
         "explanations, or unrelated alternatives to a pattern.\n"
+        "For a replacement value, emit the exact text that should replace "
+        "each match. if there is no unit word, output EXACTLY ONE value. "
+        "The plural form does NOT signify plurality.\n"
+        "If the request names a symbol descriptively, emit that symbol "
+        "as the value itself: do not add parentheses, brackets, or "
+        "explanatory "
+        "text. Preserve an explicitly quoted replacement literally.\n"
         "For an ordinary value, copy only the requested argument value."
     )
     user = "Available functions:\n" + "\n".join(
@@ -42,4 +50,4 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         for function in funcs.func
     )
     user += f"\n\nRequest: {user_input}"
-    return build_chat_prompt(system, user, assistant_prefix='{"name": "')
+    return build_chat_prompt(system, user)

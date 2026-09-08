@@ -7,8 +7,25 @@ from pydantic import BaseModel
 from src.constrained_decoder import (
     END,
     ConstrainedDecoder,
+    FunctionNameState,
+    LiteralResult,
+    LiteralState,
+    ParameterKeyState,
+    ParameterSeparatorState,
+    ParameterValueState,
     TrieNode,
+    UnsupportedTypeError,
+    ValueHandlerRegistry,
     Vocabulary,
+)
+from src.model import JsonFunction, JsonInput
+from src.prompt import build_call_prompt
+from src.regex_generation import RegexGeneration
+from src.value_handlers import (
+    _BooleanHandler,
+    _IntegerHandler,
+    _NumberHandler,
+    _StringHandler,
 )
 
 
@@ -33,6 +50,22 @@ class FakeStringModel:
         logits = [0.0] * 4
         logits[selected] = 10.0
         return logits
+
+
+class FakeLiteralModel:
+    """Track logits calls while emitting one fixed literal token."""
+
+    def __init__(self) -> None:
+        self.logits_calls = 0
+
+    def encode(self, text: str) -> NDArray[np.int_]:
+        del text
+        return np.array([[0]])
+
+    def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
+        del input_ids
+        self.logits_calls += 1
+        return [10.0]
 
 
 def string_vocabulary() -> Vocabulary:
@@ -62,6 +95,24 @@ class TrieNodeTests(unittest.TestCase):
     def test_is_a_pydantic_model(self) -> None:
         self.assertTrue(issubclass(TrieNode, BaseModel))
 
+    def test_concrete_state_and_handler_classes_use_pydantic(self) -> None:
+        classes = (
+            LiteralResult,
+            LiteralState,
+            FunctionNameState,
+            ParameterKeyState,
+            ParameterSeparatorState,
+            ParameterValueState,
+            ValueHandlerRegistry,
+            _StringHandler,
+            _NumberHandler,
+            _IntegerHandler,
+            _BooleanHandler,
+        )
+        for model_class in classes:
+            with self.subTest(model_class=model_class.__name__):
+                self.assertTrue(issubclass(model_class, BaseModel))
+
     def test_prefix_function_allows_child_and_end(self) -> None:
         root = TrieNode()
         root.insert([1, 2], "fn_add")
@@ -75,6 +126,104 @@ class TrieNodeTests(unittest.TestCase):
             prefix.children[3].children[END].value,
             "fn_add_numbers",
         )
+
+    def test_decoder_can_register_a_future_value_type(self) -> None:
+        decoder = string_decoder(FakeStringModel([0]))
+
+        class DateHandler:
+            def generate(
+                self,
+                decoder: ConstrainedDecoder,
+                prompt: list[int],
+                user_input: str,
+                parameter_name: str,
+                function: JsonFunction,
+            ) -> str:
+                return "2026-09-04"
+
+        decoder.register_value_handler("date", DateHandler())
+        self.assertIsNotNone(decoder._ensure_value_handlers().get("date"))
+
+    def test_unknown_value_type_has_explicit_error(self) -> None:
+        decoder = string_decoder(FakeStringModel([0]))
+        with self.assertRaises(UnsupportedTypeError):
+            decoder._ensure_value_handlers().get("date")
+
+    def test_parameter_value_state_dispatches_through_registry(self) -> None:
+        decoder = string_decoder(FakeStringModel([0]))
+        handler = ParameterValueState(type_name="string").handler(
+            decoder._ensure_value_handlers()
+        )
+        self.assertIsNotNone(handler)
+
+    def test_integer_is_a_supported_schema_type(self) -> None:
+        function = JsonFunction(
+            name="fn_count",
+            description="Count items",
+            parameters={"count": {"type": "integer"}},
+            returns={"type": "integer"},
+        )
+        self.assertEqual(function.parameters["count"]["type"], "integer")
+
+    def test_prompt_requires_bare_replacement_symbol(self) -> None:
+        prompt = build_call_prompt(
+            JsonInput(func=[]), "Replace vowels with asterisks"
+        )
+        self.assertIn("do not add parentheses", prompt)
+
+    def test_repeated_symbol_replacement_is_reduced_to_one_unit(self) -> None:
+        self.assertEqual(
+            RegexGeneration.refine_replacement("**", []), "*"
+        )
+
+    def test_wrapped_symbol_replacement_is_unwrapped(self) -> None:
+        self.assertEqual(
+            RegexGeneration.refine_replacement("(*)", []), "*"
+        )
+
+    def test_explicit_replacement_literal_is_preserved(self) -> None:
+        self.assertEqual(
+            RegexGeneration.refine_replacement("**", ["**"]), "**"
+        )
+
+    def test_literal_state_accepts_only_prefix_tokens(self) -> None:
+        state = LiteralState(remaining='"prompt": "')
+        self.assertTrue(state.consume('"prompt":').remaining == ' "')
+        self.assertFalse(state.consume('"name"').valid)
+
+    def test_literal_state_finishes_at_exact_boundary(self) -> None:
+        state = LiteralState(remaining='{}')
+        self.assertTrue(state.consume('{').remaining == '}')
+        self.assertTrue(state.consume('{}').finished)
+
+    def test_literal_candidates_are_derived_from_vocabulary(self) -> None:
+        decoder = string_decoder(FakeStringModel([0]))
+        candidates = decoder.literal_candidates(LiteralState(remaining='x'))
+        self.assertIn(2, candidates)
+        self.assertNotIn(1, candidates)
+
+    def test_fixed_literal_avoids_model_logits(self) -> None:
+        model = FakeLiteralModel()
+        vocabulary = Vocabulary(
+            strs=("{",),
+            str_mask=np.array([True]),
+            lead_space=np.array([False]),
+            close_mask=np.array([False]),
+            close_prefix=(None,),
+            quote=0,
+            number_tokens={0: "1"},
+            special_tokens={},
+        )
+        decoder = ConstrainedDecoder.model_construct(
+            model=model, vocabulary=vocabulary
+        )
+        prompt: list[int] = []
+        output: list[int] = []
+
+        decoder._emit_literal_constrained(prompt, output, "{")
+
+        self.assertEqual(model.logits_calls, 0)
+        self.assertEqual(output, [0])
 
 
 class StringDecoderTests(unittest.TestCase):
