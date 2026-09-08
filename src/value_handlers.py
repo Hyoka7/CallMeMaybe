@@ -60,10 +60,8 @@ class _StringHandler(BaseModel):
     ) -> Any:
         """Generate a string, including regex handling when applicable."""
         regex_kind = None
-        if decoder._is_regex_argument(function, parameter_name):
-            regex_kind = decoder._regex_kind(
-                function, parameter_name, user_input
-            )
+        if decoder.is_regex_argument(function, parameter_name):
+            regex_kind = decoder.regex_kind(function, parameter_name, user_input)
         decoder._append(prompt, [], '"')
         return decoder._string(prompt, regex_kind, user_input)
 

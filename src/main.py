@@ -2,7 +2,7 @@ import sys
 
 from tqdm import tqdm
 
-from llm_sdk import Small_LLM_Model
+from llm_sdk import Small_LLM_Model  # type: ignore
 from src.cli import parse_args
 from src.constrained_decoder import ConstrainedDecoder, Vocabulary
 from src.decoder_errors import DecoderError

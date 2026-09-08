@@ -436,6 +436,7 @@ For end-to-end validation, run the default batch with the real model and parse `
 - [NumPy documentation](https://numpy.org/doc/)
 - [tqdm documentation](https://tqdm.github.io/)
 - [uv documentation](https://docs.astral.sh/uv/)
+- [Hugging Face Chat templates](https://huggingface.co/docs/transformers/chat_templating)
 - The public interface and tokenizer data exposed by the supplied `llm_sdk`
 
 ### AI usage

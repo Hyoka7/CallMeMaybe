@@ -75,15 +75,13 @@ class ConstrainedDecoder(ValueGeneration):
             if value_type == "string":
                 self._emit_literal_constrained(structure_prompt, output, '"')
                 regex_kind = None
-                if self._is_regex_argument(function, name):
-                    regex_kind = self._regex_kind(
-                        function, name, user_input
-                    )
+                if self.is_regex_argument(function, name):
+                    regex_kind = self.regex_kind(function, name, user_input)
                 value_start = len(structure_prompt)
                 value = self._string(
                     structure_prompt, regex_kind, user_input
                 )
-                if self._is_replacement_argument(function, name):
+                if self.is_replacement_argument(function, name):
                     replacement = self.refine_replacement(
                         value, self._literal_candidates(user_input)
                     )

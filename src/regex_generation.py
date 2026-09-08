@@ -19,7 +19,7 @@ class RegexGeneration(TokenGeneration):
         tuple[str, tuple[str, ...]], str | None
     ] = PrivateAttr(default_factory=dict)
 
-    def _is_replacement_argument(
+    def is_replacement_argument(
         self, function: JsonFunction, parameter_name: str
     ) -> bool:
         """Choose the argument that stores replacement text."""
@@ -69,9 +69,7 @@ class RegexGeneration(TokenGeneration):
             return value[1]
         return value
 
-    def _is_regex_argument(
-        self, function: JsonFunction, parameter_name: str
-    ) -> bool:
+    def is_regex_argument(self, function: JsonFunction, parameter_name: str) -> bool:
         """Choose the pattern argument by comparing the complete schema."""
         string_names = tuple(
             name for name, definition in function.parameters.items()
@@ -99,7 +97,7 @@ class RegexGeneration(TokenGeneration):
         self._regex_roles[cache_key] = None if selected == "NONE" else selected
         return selected == parameter_name
 
-    def _regex_kind(
+    def regex_kind(
         self,
         function: JsonFunction,
         parameter_name: str,

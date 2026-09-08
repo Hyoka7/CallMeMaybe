@@ -11,7 +11,7 @@ from src.model import JsonFunction
 class ChoiceModel:
     """Provide one-token choices and scripted logit arrays."""
 
-    TOKEN_IDS = {
+    TOKEN_IDS = {  # noqa: RUF012
         '"': 0,
         "regex": 1,
         "replacement": 2,
@@ -63,18 +63,14 @@ class RegexGenerationTests(unittest.TestCase):
     def test_identifies_regex_argument(self) -> None:
         decoder = semantic_decoder([ChoiceModel.TOKEN_IDS["regex"]])
         function = regex_function()
-        self.assertTrue(decoder._is_regex_argument(function, "regex"))
-        self.assertFalse(decoder._is_regex_argument(function, "source_string"))
+        self.assertTrue(decoder.is_regex_argument(function, "regex"))
+        self.assertFalse(decoder.is_regex_argument(function, "source_string"))
 
     def test_identifies_replacement_argument(self) -> None:
         decoder = semantic_decoder([ChoiceModel.TOKEN_IDS["replacement"]])
         function = regex_function()
-        self.assertTrue(
-            decoder._is_replacement_argument(function, "replacement")
-        )
-        self.assertFalse(
-            decoder._is_replacement_argument(function, "source_string")
-        )
+        self.assertTrue(decoder.is_replacement_argument(function, "replacement"))
+        self.assertFalse(decoder.is_replacement_argument(function, "source_string"))
 
     def test_classifies_each_regex_kind(self) -> None:
         function = regex_function()
@@ -82,9 +78,7 @@ class RegexGenerationTests(unittest.TestCase):
             with self.subTest(kind=kind):
                 token_id = ChoiceModel.TOKEN_IDS[kind]
                 decoder = semantic_decoder([token_id, 8])
-                self.assertEqual(
-                    decoder._regex_kind(function, "regex", "request"), kind
-                )
+                self.assertEqual(decoder.regex_kind(function, "regex", "request"), kind)
 
 
 if __name__ == "__main__":
