@@ -367,7 +367,7 @@ The current tests cover:
 - normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
 - creation and contents of the final JSON result array.
 
-There are 45 deterministic unit tests in the current suite.
+There are 46 deterministic unit tests in the current suite.
 
 Run all unit tests:
 

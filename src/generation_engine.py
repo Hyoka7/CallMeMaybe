@@ -65,12 +65,12 @@ class ConstrainedDecoder(ValueGeneration):
         for index, (name, definition) in enumerate(
             function.parameters.items()
         ):
-            key_state = ParameterKeyState(name)
+            key_state = ParameterKeyState(name=name)
             self._emit_literal_constrained(
                 structure_prompt, output, key_state.literal
             )
             value_type = definition["type"]
-            value_state = ParameterValueState(value_type)
+            value_state = ParameterValueState(type_name=value_type)
             value_state.handler(self._ensure_value_handlers())
             if value_type == "string":
                 self._emit_literal_constrained(structure_prompt, output, '"')

@@ -47,7 +47,7 @@ class TokenGeneration(BaseModel):
         self, prompt: list[int], output: list[int], literal: str
     ) -> None:
         """Emit a fixed fragment using tokens valid for its state."""
-        state = LiteralState(literal)
+        state = LiteralState(remaining=literal)
         encoded = self.model.encode(literal)[0].tolist()
         fast_state = state
         fast_valid = True
@@ -59,7 +59,7 @@ class TokenGeneration(BaseModel):
             if not result.valid:
                 fast_valid = False
                 break
-            fast_state = LiteralState(result.remaining)
+            fast_state = LiteralState(remaining=result.remaining)
         if fast_valid and fast_state.finished:
             prompt.extend(encoded)
             output.extend(encoded)
@@ -84,7 +84,7 @@ class TokenGeneration(BaseModel):
             chosen = max(scored, key=scored.__getitem__)
             prompt.append(chosen)
             output.append(chosen)
-            state = LiteralState(candidates[chosen].remaining)
+            state = LiteralState(remaining=candidates[chosen].remaining)
 
     def _trie_choice(self, prompt: str, choices: list[str]) -> str:
         """Choose one complete string, allowing terminal prefix nodes."""
@@ -99,7 +99,7 @@ class TokenGeneration(BaseModel):
         output_ids: list[int],
     ) -> str:
         """Generate a function name through its dedicated trie state."""
-        state = FunctionNameState(tuple(function_names))
+        state = FunctionNameState(choices=tuple(function_names))
         state.build(self)
         return self._trie_choice_ids(
             prompt_ids, list(state.choices), output_ids

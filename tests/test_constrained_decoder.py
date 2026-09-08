@@ -7,15 +7,26 @@ from pydantic import BaseModel
 from src.constrained_decoder import (
     END,
     ConstrainedDecoder,
+    FunctionNameState,
+    LiteralResult,
     LiteralState,
+    ParameterKeyState,
+    ParameterSeparatorState,
     ParameterValueState,
     TrieNode,
     UnsupportedTypeError,
+    ValueHandlerRegistry,
     Vocabulary,
 )
 from src.model import JsonFunction, JsonInput
 from src.prompt import build_call_prompt
 from src.regex_generation import RegexGeneration
+from src.value_handlers import (
+    _BooleanHandler,
+    _IntegerHandler,
+    _NumberHandler,
+    _StringHandler,
+)
 
 
 class FakeStringModel:
@@ -84,6 +95,24 @@ class TrieNodeTests(unittest.TestCase):
     def test_is_a_pydantic_model(self) -> None:
         self.assertTrue(issubclass(TrieNode, BaseModel))
 
+    def test_concrete_state_and_handler_classes_use_pydantic(self) -> None:
+        classes = (
+            LiteralResult,
+            LiteralState,
+            FunctionNameState,
+            ParameterKeyState,
+            ParameterSeparatorState,
+            ParameterValueState,
+            ValueHandlerRegistry,
+            _StringHandler,
+            _NumberHandler,
+            _IntegerHandler,
+            _BooleanHandler,
+        )
+        for model_class in classes:
+            with self.subTest(model_class=model_class.__name__):
+                self.assertTrue(issubclass(model_class, BaseModel))
+
     def test_prefix_function_allows_child_and_end(self) -> None:
         root = TrieNode()
         root.insert([1, 2], "fn_add")
@@ -122,7 +151,7 @@ class TrieNodeTests(unittest.TestCase):
 
     def test_parameter_value_state_dispatches_through_registry(self) -> None:
         decoder = string_decoder(FakeStringModel([0]))
-        handler = ParameterValueState("string").handler(
+        handler = ParameterValueState(type_name="string").handler(
             decoder._ensure_value_handlers()
         )
         self.assertIsNotNone(handler)
@@ -158,18 +187,18 @@ class TrieNodeTests(unittest.TestCase):
         )
 
     def test_literal_state_accepts_only_prefix_tokens(self) -> None:
-        state = LiteralState('"prompt": "')
+        state = LiteralState(remaining='"prompt": "')
         self.assertTrue(state.consume('"prompt":').remaining == ' "')
         self.assertFalse(state.consume('"name"').valid)
 
     def test_literal_state_finishes_at_exact_boundary(self) -> None:
-        state = LiteralState('{}')
+        state = LiteralState(remaining='{}')
         self.assertTrue(state.consume('{').remaining == '}')
         self.assertTrue(state.consume('{}').finished)
 
     def test_literal_candidates_are_derived_from_vocabulary(self) -> None:
         decoder = string_decoder(FakeStringModel([0]))
-        candidates = decoder.literal_candidates(LiteralState('x'))
+        candidates = decoder.literal_candidates(LiteralState(remaining='x'))
         self.assertIn(2, candidates)
         self.assertNotIn(1, candidates)
 

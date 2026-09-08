@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 docs
+
+# Local Japanese README
+README.ja.md

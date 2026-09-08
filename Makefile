@@ -5,7 +5,7 @@ MYPY := .venv/bin/mypy
 MYPYFLAGS = --warn-return-any --warn-unused-ignores \
 		--ignore-missing-imports --disallow-untyped-defs \
 		--check-untyped-defs
-
+ARGS ?=
 export UV_LINK_MODE = copy
 
 .PHONY: install run debug test clean lint lint-strict
@@ -15,7 +15,7 @@ install: $(VENV)
 	$(UV) pip install flake8 mypy
 
 run:
-	$(UV) run -m src
+	$(UV) run -m src $(ARGS)
 
 debug:
 	$(UV) run python -m pdb -m src
