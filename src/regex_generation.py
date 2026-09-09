@@ -39,7 +39,9 @@ class RegexGeneration(TokenGeneration):
             f"String arguments: {', '.join(string_names)}\n"
             'Replacement argument: "'
         )
-        selected = self._trie_choice(prompt, list(string_names) + ["NONE"])
+        selected = self.choose_trie_value(
+            prompt, list(string_names) + ["NONE"]
+        )
         self._replacement_roles[cache_key] = (
             None if selected == "NONE" else selected
         )
@@ -69,7 +71,11 @@ class RegexGeneration(TokenGeneration):
             return value[1]
         return value
 
-    def is_regex_argument(self, function: JsonFunction, parameter_name: str) -> bool:
+    def is_regex_argument(
+        self,
+        function: JsonFunction,
+        parameter_name: str,
+    ) -> bool:
         """Choose the pattern argument by comparing the complete schema."""
         string_names = tuple(
             name for name, definition in function.parameters.items()
@@ -93,7 +99,9 @@ class RegexGeneration(TokenGeneration):
             f"String arguments: {', '.join(string_names)}\n"
             "Pattern argument: \""
         )
-        selected = self._trie_choice(prompt, list(string_names) + ["NONE"])
+        selected = self.choose_trie_value(
+            prompt, list(string_names) + ["NONE"]
+        )
         self._regex_roles[cache_key] = None if selected == "NONE" else selected
         return selected == parameter_name
 
@@ -160,7 +168,7 @@ class RegexGeneration(TokenGeneration):
                 return prefix
         return None
 
-    def _refine_regex(self, pattern: str) -> str:
+    def refine_regex(self, pattern: str) -> str:
         """Enforce the prompt's shortest-pattern invariant."""
         if not pattern.endswith(".*") or len(pattern) <= 2:
             return pattern

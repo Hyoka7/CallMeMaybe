@@ -31,6 +31,16 @@ class ValueHandlerRegistry(BaseModel):
 
     _handlers: dict[str, ValueHandler] = PrivateAttr(default_factory=dict)
 
+    @classmethod
+    def default(cls) -> ValueHandlerRegistry:
+        """Create a registry populated with the built-in JSON handlers."""
+        registry = cls()
+        registry.register("string", StringHandler())
+        registry.register("number", NumberHandler())
+        registry.register("integer", IntegerHandler())
+        registry.register("boolean", BooleanHandler())
+        return registry
+
     def register(self, type_name: str, handler: ValueHandler) -> None:
         """Associate a non-empty schema type name with its generator."""
         if not type_name or not type_name.strip():
@@ -47,7 +57,7 @@ class ValueHandlerRegistry(BaseModel):
             ) from exc
 
 
-class _StringHandler(BaseModel):
+class StringHandler(BaseModel):
     """Adapter for constrained JSON string generation."""
 
     def generate(
@@ -61,12 +71,14 @@ class _StringHandler(BaseModel):
         """Generate a string, including regex handling when applicable."""
         regex_kind = None
         if decoder.is_regex_argument(function, parameter_name):
-            regex_kind = decoder.regex_kind(function, parameter_name, user_input)
-        decoder._append(prompt, [], '"')
-        return decoder._string(prompt, regex_kind, user_input)
+            regex_kind = decoder.regex_kind(
+                function, parameter_name, user_input
+            )
+        decoder.append_tokens(prompt, [], '"')
+        return decoder.generate_string(prompt, regex_kind, user_input)
 
 
-class _NumberHandler(BaseModel):
+class NumberHandler(BaseModel):
     """Adapter for constrained JSON number generation."""
 
     def generate(
@@ -79,10 +91,10 @@ class _NumberHandler(BaseModel):
     ) -> Any:
         """Generate a JSON number value."""
         del user_input, parameter_name, function
-        return decoder._number(prompt, "}")
+        return decoder.generate_number(prompt, "}")
 
 
-class _IntegerHandler(BaseModel):
+class IntegerHandler(BaseModel):
     """Adapter for constrained JSON integer generation."""
 
     def generate(
@@ -95,10 +107,10 @@ class _IntegerHandler(BaseModel):
     ) -> Any:
         """Generate a JSON integer value."""
         del user_input, parameter_name, function
-        return decoder._number(prompt, "}", integer=True)
+        return decoder.generate_number(prompt, "}", integer=True)
 
 
-class _BooleanHandler(BaseModel):
+class BooleanHandler(BaseModel):
     """Adapter for constrained JSON boolean generation."""
 
     def generate(
@@ -111,4 +123,4 @@ class _BooleanHandler(BaseModel):
     ) -> Any:
         """Generate a JSON boolean value."""
         del user_input, parameter_name, function
-        return decoder._boolean(prompt)
+        return decoder.generate_boolean(prompt)

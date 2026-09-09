@@ -1,0 +1,6 @@
+{
+  "include": ["src", "tests"],
+  "ignore": ["llm_sdk/**"],
+  "extraPaths": ["llm_sdk"],
+  "typeCheckingMode": "basic"
+}

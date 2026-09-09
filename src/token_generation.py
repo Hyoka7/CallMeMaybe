@@ -24,7 +24,12 @@ class TokenGeneration(BaseModel):
     model: Small_LLM_Model
     vocabulary: Vocabulary
 
-    def _append(self, prompt: list[int], output: list[int], text: str) -> None:
+    def append_tokens(
+        self,
+        prompt: list[int],
+        output: list[int],
+        text: str,
+    ) -> None:
         """Tokenize text and append it to prompt and generated output."""
         token_ids = self.model.encode(text)[0].tolist()
         prompt.extend(token_ids)
@@ -43,8 +48,11 @@ class TokenGeneration(BaseModel):
                 candidates[token_id] = result
         return candidates
 
-    def _emit_literal_constrained(
-        self, prompt: list[int], output: list[int], literal: str
+    def emit_literal(
+        self,
+        prompt: list[int],
+        output: list[int],
+        literal: str,
     ) -> None:
         """Emit a fixed fragment using tokens valid for its state."""
         state = LiteralState(remaining=literal)
@@ -86,13 +94,13 @@ class TokenGeneration(BaseModel):
             output.append(chosen)
             state = LiteralState(remaining=candidates[chosen].remaining)
 
-    def _trie_choice(self, prompt: str, choices: list[str]) -> str:
+    def choose_trie_value(self, prompt: str, choices: list[str]) -> str:
         """Choose one complete string, allowing terminal prefix nodes."""
-        return self._trie_choice_ids(
+        return self.choose_trie_token_ids(
             self.model.encode(prompt)[0].tolist(), choices
         )
 
-    def _function_name(
+    def choose_function_name(
         self,
         prompt_ids: list[int],
         function_names: list[str],
@@ -101,11 +109,13 @@ class TokenGeneration(BaseModel):
         """Generate a function name through its dedicated trie state."""
         state = FunctionNameState(choices=tuple(function_names))
         state.build(self)
-        return self._trie_choice_ids(
-            prompt_ids, list(state.choices), output_ids
+        return self.choose_trie_token_ids(
+            prompt_ids,
+            list(state.choices),
+            output_ids,
         )
 
-    def _trie_choice_ids(
+    def choose_trie_token_ids(
         self,
         prompt_ids: list[int],
         choices: list[str],

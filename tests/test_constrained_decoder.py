@@ -22,10 +22,10 @@ from src.model import JsonFunction, JsonInput
 from src.prompt import build_call_prompt
 from src.regex_generation import RegexGeneration
 from src.value_handlers import (
-    _BooleanHandler,
-    _IntegerHandler,
-    _NumberHandler,
-    _StringHandler,
+    BooleanHandler,
+    IntegerHandler,
+    NumberHandler,
+    StringHandler,
 )
 
 
@@ -104,10 +104,10 @@ class TrieNodeTests(unittest.TestCase):
             ParameterSeparatorState,
             ParameterValueState,
             ValueHandlerRegistry,
-            _StringHandler,
-            _NumberHandler,
-            _IntegerHandler,
-            _BooleanHandler,
+            StringHandler,
+            NumberHandler,
+            IntegerHandler,
+            BooleanHandler,
         )
         for model_class in classes:
             with self.subTest(model_class=model_class.__name__):
@@ -142,17 +142,23 @@ class TrieNodeTests(unittest.TestCase):
                 return "2026-09-04"
 
         decoder.register_value_handler("date", DateHandler())
-        self.assertIsNotNone(decoder._ensure_value_handlers().get("date"))
+        self.assertIsNotNone(decoder.value_handlers().get("date"))
+
+    def test_default_registry_contains_builtin_handlers(self) -> None:
+        registry = ValueHandlerRegistry.default()
+        for type_name in ("string", "number", "integer", "boolean"):
+            with self.subTest(type_name=type_name):
+                self.assertIsNotNone(registry.get(type_name))
 
     def test_unknown_value_type_has_explicit_error(self) -> None:
         decoder = string_decoder(FakeStringModel([0]))
         with self.assertRaises(UnsupportedTypeError):
-            decoder._ensure_value_handlers().get("date")
+            decoder.value_handlers().get("date")
 
     def test_parameter_value_state_dispatches_through_registry(self) -> None:
         decoder = string_decoder(FakeStringModel([0]))
         handler = ParameterValueState(type_name="string").handler(
-            decoder._ensure_value_handlers()
+            decoder.value_handlers()
         )
         self.assertIsNotNone(handler)
 
@@ -220,7 +226,7 @@ class TrieNodeTests(unittest.TestCase):
         prompt: list[int] = []
         output: list[int] = []
 
-        decoder._emit_literal_constrained(prompt, output, "{")
+        decoder.emit_literal(prompt, output, "{")
 
         self.assertEqual(model.logits_calls, 0)
         self.assertEqual(output, [0])
@@ -234,7 +240,7 @@ class StringDecoderTests(unittest.TestCase):
         decoder = string_decoder(model)
         prompt = [99]
 
-        value = decoder._string(prompt, user_input="Use ''")
+        value = decoder.generate_string(prompt, user_input="Use ''")
 
         self.assertEqual(value, "")
         self.assertEqual(prompt, [99, 0])
@@ -244,7 +250,7 @@ class StringDecoderTests(unittest.TestCase):
         decoder = string_decoder(model)
         prompt = [99]
 
-        value = decoder._string(prompt, user_input="Use 'a\"b'")
+        value = decoder.generate_string(prompt, user_input="Use 'a\"b'")
 
         self.assertEqual(value, 'a"b')
         self.assertEqual(prompt, [99, 2, 3, 0, 2, 0])
@@ -254,7 +260,7 @@ class StringDecoderTests(unittest.TestCase):
         decoder = string_decoder(model)
         prompt = [99]
 
-        value = decoder._string(prompt, user_input="Use '\\'")
+        value = decoder.generate_string(prompt, user_input="Use '\\'")
 
         self.assertEqual(value, "\\")
         self.assertEqual(prompt, [99, 3, 3, 0])

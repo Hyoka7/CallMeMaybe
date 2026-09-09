@@ -159,9 +159,11 @@ class MainTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "Aborting: broken\n")
 
     def test_unexpected_exception_is_not_swallowed(self) -> None:
-        with patch("src.main.run", side_effect=RuntimeError("bug")):  # noqa: SIM117
-            with self.assertRaisesRegex(RuntimeError, "bug"):
-                main()
+        with (
+            patch("src.main.run", side_effect=RuntimeError("bug")),
+            self.assertRaisesRegex(RuntimeError, "bug"),
+        ):
+            main()
 
 
 if __name__ == "__main__":

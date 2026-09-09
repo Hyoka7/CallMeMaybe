@@ -48,19 +48,21 @@ class NumberGenerationTests(unittest.TestCase):
 
     def test_number_generates_fraction(self) -> None:
         decoder = numeric_decoder([{2: 10}, {3: 10}, {4: 10}, {0: 10}])
-        self.assertEqual(decoder._number([], "}"), [2, 3, 4])
+        self.assertEqual(decoder.generate_number([], "}"), [2, 3, 4])
 
     def test_number_generates_exponent(self) -> None:
         decoder = numeric_decoder([{2: 10}, {5: 10}, {6: 10}, {0: 10}])
-        self.assertEqual(decoder._number([], "}"), [2, 5, 6])
+        self.assertEqual(decoder.generate_number([], "}"), [2, 5, 6])
 
     def test_integer_rejects_decimal_token(self) -> None:
         decoder = numeric_decoder([{2: 10}, {3: 10}])
-        self.assertEqual(decoder._number([], "}", integer=True), [2])
+        self.assertEqual(decoder.generate_number([], "}", integer=True), [2])
 
     def test_integer_generates_negative_value(self) -> None:
         decoder = numeric_decoder([{1: 10}, {2: 10}, {0: 10}])
-        self.assertEqual(decoder._number([], "}", integer=True), [1, 2])
+        self.assertEqual(
+            decoder.generate_number([], "}", integer=True), [1, 2]
+        )
 
     def test_minus_prefix_cannot_terminate(self) -> None:
         decoder = numeric_decoder([
@@ -68,7 +70,7 @@ class NumberGenerationTests(unittest.TestCase):
             {0: 10, 2: 9},
             {0: 10},
         ])
-        self.assertEqual(decoder._number([], "}"), [1, 2])
+        self.assertEqual(decoder.generate_number([], "}"), [1, 2])
 
     def test_fraction_prefix_cannot_terminate(self) -> None:
         decoder = numeric_decoder([
@@ -77,7 +79,7 @@ class NumberGenerationTests(unittest.TestCase):
             {0: 10, 4: 9},
             {0: 10},
         ])
-        self.assertEqual(decoder._number([], "}"), [2, 3, 4])
+        self.assertEqual(decoder.generate_number([], "}"), [2, 3, 4])
 
     def test_exponent_prefix_cannot_terminate(self) -> None:
         decoder = numeric_decoder([
@@ -86,7 +88,7 @@ class NumberGenerationTests(unittest.TestCase):
             {0: 10, 6: 9},
             {0: 10},
         ])
-        self.assertEqual(decoder._number([], "}"), [2, 5, 6])
+        self.assertEqual(decoder.generate_number([], "}"), [2, 5, 6])
 
 
 class BooleanModel:
@@ -115,7 +117,7 @@ class BooleanGenerationTests(unittest.TestCase):
             model=BooleanModel("true"), vocabulary=None
         )
         prompt: list[int] = []
-        self.assertEqual(decoder._boolean(prompt), [1])
+        self.assertEqual(decoder.generate_boolean(prompt), [1])
         self.assertEqual(prompt, [1])
 
     def test_selects_false(self) -> None:
@@ -123,7 +125,7 @@ class BooleanGenerationTests(unittest.TestCase):
             model=BooleanModel("false"), vocabulary=None
         )
         prompt: list[int] = []
-        self.assertEqual(decoder._boolean(prompt), [2])
+        self.assertEqual(decoder.generate_boolean(prompt), [2])
         self.assertEqual(prompt, [2])
 
 

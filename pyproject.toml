@@ -29,3 +29,10 @@ dev = [
 [tool.mypy]
 mypy_path = "llm_sdk"
 exclude = ["^\\.venv/", "^llm_sdk/"]
+
+[[tool.mypy.overrides]]
+module = ["llm_sdk", "llm_sdk.*"]
+follow_imports = "skip"
+
+[tool.ruff]
+extend-exclude = ["llm_sdk/**"]

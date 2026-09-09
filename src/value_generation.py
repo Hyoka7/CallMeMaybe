@@ -24,7 +24,7 @@ NUMBER_COMPLETE = re.compile(
 class ValueGeneration(RegexGeneration):
     """Generate typed values on the shared token stream."""
 
-    def _string(
+    def generate_string(
         self,
         prompt: list[int],
         regex_kind: str | None = None,
@@ -46,7 +46,7 @@ class ValueGeneration(RegexGeneration):
             mask = np.zeros(len(logits), dtype=bool)
             mask[:copy_size] = self.vocabulary.str_mask[:copy_size]
             for token_id, token_text in self.vocabulary.special_tokens.items():
-                if token_id < len(mask) and self._literal_prefix(
+                if token_id < len(mask) and self.literal_prefix(
                     content + token_text, user_input
                 ):
                     mask[token_id] = True
@@ -56,7 +56,7 @@ class ValueGeneration(RegexGeneration):
                 lead_space = np.zeros(len(logits), dtype=bool)
                 lead_space[:copy_size] = self.vocabulary.lead_space[:copy_size]
                 mask &= ~lead_space
-            if regex_kind is not None or not self._literal_incomplete(
+            if regex_kind is not None or not self.literal_incomplete(
                 content, user_input
             ):
                 mask |= close_mask
@@ -64,17 +64,17 @@ class ValueGeneration(RegexGeneration):
             prefix = self.vocabulary.close_prefix[chosen]
             if prefix is not None:
                 token_text = self.vocabulary.strs[chosen]
-                if token_text and self._literal_prefix(
+                if token_text and self.literal_prefix(
                     content + token_text, user_input
                 ):
-                    self._append_string_fragment(prompt, token_text, chosen)
+                    self.append_string_fragment(prompt, token_text, chosen)
                     content += token_text
                     continue
                 proposed_close = content + prefix
                 if (
                     regex_kind is None
                     and prefix
-                    and self._literal_incomplete(proposed_close, user_input)
+                    and self.literal_incomplete(proposed_close, user_input)
                 ):
                     prompt.extend(self.model.encode(prefix)[0].tolist())
                     content = proposed_close
@@ -98,7 +98,7 @@ class ValueGeneration(RegexGeneration):
                 prompt.append(self.vocabulary.quote)
                 return complete
             fragment = self.vocabulary.strs[chosen]
-            self._append_string_fragment(prompt, fragment, chosen)
+            self.append_string_fragment(prompt, fragment, chosen)
             content = proposed
         if regex_kind == "characters" and not content.endswith("]"):
             content += "]"
@@ -107,7 +107,7 @@ class ValueGeneration(RegexGeneration):
         return content
 
     @staticmethod
-    def _literal_candidates(user_input: str) -> list[str]:
+    def extract_literal_candidates(user_input: str) -> list[str]:
         """Extract likely literal argument values from a user request."""
         quoted = [
             match[0] or match[1]
@@ -120,24 +120,24 @@ class ValueGeneration(RegexGeneration):
         return re.findall(r"[A-Za-z0-9_]+", user_input)
 
     @classmethod
-    def _literal_prefix(cls, content: str, user_input: str) -> bool:
+    def literal_prefix(cls, content: str, user_input: str) -> bool:
         """Check whether content prefixes a requested literal value."""
         return any(
             candidate.startswith(content)
-            for candidate in cls._literal_candidates(user_input)
+            for candidate in cls.extract_literal_candidates(user_input)
         )
 
     @classmethod
-    def _literal_incomplete(
+    def literal_incomplete(
         cls, content: str, user_input: str
     ) -> bool:
         """Check if content is a strict prefix of a requested text span."""
         return any(
             candidate.startswith(content) and candidate != content
-            for candidate in cls._literal_candidates(user_input)
+            for candidate in cls.extract_literal_candidates(user_input)
         )
 
-    def _append_string_fragment(
+    def append_string_fragment(
         self, prompt: list[int], fragment: str, token_id: int
     ) -> None:
         """Append one semantic string fragment using JSON escaping."""
@@ -147,7 +147,7 @@ class ValueGeneration(RegexGeneration):
         else:
             prompt.extend(self.model.encode(escaped)[0].tolist())
 
-    def _number(
+    def generate_number(
         self, prompt: list[int], end_text: str, limit: int = 24,
         integer: bool = False,
     ) -> list[int]:
@@ -194,7 +194,7 @@ class ValueGeneration(RegexGeneration):
             text += self.vocabulary.number_tokens[chosen]
         raise NoValidTokenError("Number value did not terminate")
 
-    def _boolean(self, prompt: list[int]) -> list[int]:
+    def generate_boolean(self, prompt: list[int]) -> list[int]:
         """Choose one JSON boolean literal from model logits."""
         choices = {
             value: self.model.encode(value)[0].tolist()
