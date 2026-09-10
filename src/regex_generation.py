@@ -19,6 +19,17 @@ class RegexGeneration(TokenGeneration):
         tuple[str, tuple[str, ...]], str | None
     ] = PrivateAttr(default_factory=dict)
 
+    @staticmethod
+    def is_source_argument(parameter_name: str) -> bool:
+        """Identify a parameter intended to hold source/input text."""
+        name = parameter_name.lower()
+        return (
+            any(marker in name for marker in ("source", "input", "text"))
+            and "regex" not in name
+            and "pattern" not in name
+            and "replacement" not in name
+        )
+
     def is_replacement_argument(
         self, function: JsonFunction, parameter_name: str
     ) -> bool:
@@ -34,7 +45,10 @@ class RegexGeneration(TokenGeneration):
             "Choose which string argument stores the replacement value "
             "inserted for every match. Do not choose source text, matching "
             "patterns, names, or other values. Choose NONE if there is no "
-            "replacement argument.\n"
+            "replacement argument. The value must be the exact text inserted "
+            "into the source, not the name or description of that text. For "
+            "example, asterisks means the symbol '*', not the word "
+            "'asterisk' or 'asterisks'.\n"
             f"Function purpose: {function.description}\n"
             f"String arguments: {', '.join(string_names)}\n"
             'Replacement argument: "'

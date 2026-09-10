@@ -18,7 +18,7 @@ class ScriptedLogitsModel:
 
     def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
         del input_ids
-        logits = [-100.0] * 7
+        logits = [-100.0] * 8
         for token_id, score in next(self.scores).items():
             logits[token_id] = score
         return logits
@@ -72,6 +72,26 @@ class NumberGenerationTests(unittest.TestCase):
         ])
         self.assertEqual(decoder.generate_number([], "}"), [1, 2])
 
+    def test_number_accepts_leading_space_in_negative_token(self) -> None:
+        decoder = ConstrainedDecoder.model_construct(
+            model=ScriptedLogitsModel([
+                {7: 10},
+                {2: 10},
+                {0: 10},
+            ]),
+            vocabulary=Vocabulary(
+                strs=("}", "-", "1", ".", "5", "e", "2", " -"),
+                str_mask=np.ones(8, dtype=bool),
+                lead_space=np.zeros(8, dtype=bool),
+                close_mask=np.zeros(8, dtype=bool),
+                close_prefix=(None,) * 8,
+                quote=0,
+                number_tokens={7: " -", 2: "1"},
+                special_tokens={},
+            ),
+        )
+        self.assertEqual(decoder.generate_number([], "}"), [7, 2])
+
     def test_fraction_prefix_cannot_terminate(self) -> None:
         decoder = numeric_decoder([
             {2: 10},
@@ -98,7 +118,7 @@ class BooleanModel:
         self.selected = selected
 
     def encode(self, text: str) -> NDArray[np.int_]:
-        return np.array([[1] if text == "true" else [2]])
+        return np.array([[1] if text.strip() == "true" else [2]])
 
     def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
         del input_ids

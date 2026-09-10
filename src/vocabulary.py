@@ -80,7 +80,10 @@ class Vocabulary(BaseModel):
                 ):
                     close_mask[token_id] = True
                     close_prefix[token_id] = prefix
-            if text and all(char in "-+.eE0123456789" for char in text):
+            number_text = text[1:] if text.startswith(" ") else text
+            if number_text and all(
+                char in "-+.eE0123456789" for char in number_text
+            ):
                 number_ids[token_id] = text
         quote_ids = model.encode('"')[0].tolist()
         if len(quote_ids) != 1:

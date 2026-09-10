@@ -155,6 +155,8 @@ The output is one JSON array containing an entry for every input prompt:
 
 Each result contains exactly `prompt`, `name`, and `parameters`. The program writes the file only after the full batch succeeds, so a failed run does not produce a partial new result.
 
+Input JSON objects are checked for duplicate keys while loading. A duplicate key is rejected instead of silently accepting the last value.
+
 ## Algorithm Explanation
 
 ### Generation pipeline
@@ -222,7 +224,7 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 `ParameterValueState` resolves each schema type through `ValueHandlerRegistry`. The structural state machine remains responsible for keys and punctuation; value handlers own only value syntax.
 
-String generation uses vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Unsafe fragments are rejected or JSON-escaped. Quoted spans from the original request are used as literal candidates so that source text is not closed halfway through generation.
+String generation uses vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Unsafe fragments are rejected or JSON-escaped. Parameters whose names indicate source/input/text are constrained to quoted literal candidates from the request, preventing unrelated continuation. String values otherwise remain model-generated.
 
 Number generation maintains the text produced so far. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the same mechanism with an additional integer-only expression, excluding decimal points and exponents.
 
@@ -238,7 +240,7 @@ For functions whose descriptions refer to regular expressions, the decoder ident
 
 The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. It also removes an unnecessary trailing `.*` when a shorter completed pattern is sufficient.
 
-Replacement parameters are identified separately. If the model infers a single-symbol replacement but emits repeated copies or wraps it in brackets, the value is reduced to one symbol. Explicitly quoted replacement literals are preserved exactly.
+Replacement parameters are identified separately. If the model infers a single-symbol replacement but emits repeated copies or wraps it in brackets, the value is reduced to one symbol. The prompt asks for the actual replacement text rather than its description; no word-to-symbol dictionary is applied. Explicitly quoted replacement literals are preserved exactly.
 
 Examples:
 

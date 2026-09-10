@@ -30,6 +30,7 @@ class ValueGeneration(RegexGeneration):
         regex_kind: str | None = None,
         user_input: str = "",
         limit: int = 48,
+        literal_candidates: list[str] | None = None,
     ) -> str:
         """Generate safe content and always close its JSON quote."""
         content = ""
@@ -50,13 +51,24 @@ class ValueGeneration(RegexGeneration):
                     content + token_text, user_input
                 ):
                     mask[token_id] = True
+            if literal_candidates is not None:
+                mask[:] = False
+                for token_id, token_text in enumerate(self.vocabulary.strs):
+                    if any(
+                        candidate.startswith(content + token_text)
+                        for candidate in literal_candidates
+                    ):
+                        mask[token_id] = True
             close_mask = np.zeros(len(logits), dtype=bool)
             close_mask[:copy_size] = self.vocabulary.close_mask[:copy_size]
             if not content:
                 lead_space = np.zeros(len(logits), dtype=bool)
                 lead_space[:copy_size] = self.vocabulary.lead_space[:copy_size]
                 mask &= ~lead_space
-            if regex_kind is not None or not self.literal_incomplete(
+            if literal_candidates is not None:
+                if any(candidate == content for candidate in literal_candidates):
+                    mask |= close_mask
+            elif regex_kind is not None or not self.literal_incomplete(
                 content, user_input
             ):
                 mask |= close_mask
@@ -71,6 +83,11 @@ class ValueGeneration(RegexGeneration):
                     content += token_text
                     continue
                 proposed_close = content + prefix
+                if literal_candidates is not None and not any(
+                    candidate == proposed_close
+                    for candidate in literal_candidates
+                ):
+                    continue
                 if (
                     regex_kind is None
                     and prefix
@@ -161,10 +178,16 @@ class ValueGeneration(RegexGeneration):
                 token_id
                 for token_id, token_text
                 in self.vocabulary.number_tokens.items()
-                if NUMBER_PREFIX.fullmatch(text + token_text)
+                if NUMBER_PREFIX.fullmatch(
+                    text + (token_text.lstrip() if not text else token_text)
+                )
                 and (
                     not integer
-                    or INTEGER_PREFIX.fullmatch(text + token_text)
+                    or INTEGER_PREFIX.fullmatch(
+                        text + (
+                            token_text.lstrip() if not text else token_text
+                        )
+                    )
                 )
             }
             if not valid:
@@ -191,13 +214,14 @@ class ValueGeneration(RegexGeneration):
                 return output
             output.append(chosen)
             prompt.append(chosen)
-            text += self.vocabulary.number_tokens[chosen]
+            token_text = self.vocabulary.number_tokens[chosen]
+            text += token_text.lstrip() if not text else token_text
         raise NoValidTokenError("Number value did not terminate")
 
     def generate_boolean(self, prompt: list[int]) -> list[int]:
         """Choose one JSON boolean literal from model logits."""
         choices = {
-            value: self.model.encode(value)[0].tolist()
+            value: self.model.encode(f" {value}")[0].tolist()
             for value in ("true", "false")
         }
         first_logits = self.model.get_logits_from_input_ids(prompt)

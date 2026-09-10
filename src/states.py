@@ -75,8 +75,12 @@ class ParameterKeyState(BaseModel):
 
     @property
     def literal(self) -> str:
-        """Return the JSON-encoded key and its following separator."""
-        return json.dumps(self.name, ensure_ascii=False) + ": "
+        """Return the JSON-encoded key and colon.
+
+        The value-leading whitespace is emitted by the value generator. This
+        preserves tokenizer-native space-prefixed number tokens.
+        """
+        return json.dumps(self.name, ensure_ascii=False) + ":"
 
 
 class ParameterSeparatorState(BaseModel):

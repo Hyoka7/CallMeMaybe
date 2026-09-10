@@ -64,13 +64,21 @@ class ConstrainedDecoder(ValueGeneration):
             value_state = ParameterValueState(type_name=value_type)
             value_state.handler(self.value_handlers())
             if value_type == "string":
+                self.emit_literal(structure_prompt, output, " ")
                 self.emit_literal(structure_prompt, output, '"')
                 regex_kind = None
                 if self.is_regex_argument(function, name):
                     regex_kind = self.regex_kind(function, name, user_input)
                 value_start = len(structure_prompt)
                 value = self.generate_string(
-                    structure_prompt, regex_kind, user_input
+                    structure_prompt,
+                    regex_kind,
+                    user_input,
+                    literal_candidates=(
+                        self.extract_literal_candidates(user_input)
+                        if self.is_source_argument(name)
+                        else None
+                    ),
                 )
                 if self.is_replacement_argument(function, name):
                     replacement = self.refine_replacement(

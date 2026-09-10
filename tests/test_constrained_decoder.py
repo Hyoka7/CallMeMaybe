@@ -175,7 +175,26 @@ class TrieNodeTests(unittest.TestCase):
         prompt = build_call_prompt(
             JsonInput(func=[]), "Replace vowels with asterisks"
         )
-        self.assertIn("do not add parentheses", prompt)
+        self.assertIn("emit the exact text that should replace", prompt)
+
+    def test_prompt_preserves_numeric_order_and_sign(self) -> None:
+        prompt = build_call_prompt(
+            JsonInput(func=[]), "What is the sum of -1 and 345?"
+        )
+        self.assertIn("preserve the order", prompt)
+        self.assertIn("Do not drop a leading minus sign", prompt)
+        self.assertIn("change a number's sign", prompt)
+
+    def test_prompt_keeps_source_literal_exact_and_regex_minimal(self) -> None:
+        prompt = build_call_prompt(
+            JsonInput(func=[]),
+            'Replace all numbers in "What is the sum of 2 and 3?" with NUMBERS',
+        )
+        self.assertIn("copy the user's source text exactly", prompt)
+        self.assertIn("Do not add, remove, or alter any character", prompt)
+        self.assertIn("Do not add source text or replacement text to the pattern", prompt)
+        self.assertIn("Do not append unrelated punctuation", prompt)
+        self.assertIn("asterisks' means the replacement value is exactly '*'", prompt)
 
     def test_repeated_symbol_replacement_is_reduced_to_one_unit(self) -> None:
         self.assertEqual(

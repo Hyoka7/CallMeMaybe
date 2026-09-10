@@ -48,6 +48,18 @@ class LoaderTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Invalid Json in prompt"):
                 load_prompts(path)
 
+    def test_rejects_duplicate_json_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "functions.json"
+            path.write_text(
+                '{"name": "fn_first", "name": "fn_second"}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError, rf"{path}: Duplicate JSON key: 'name'"
+            ):
+                load_functions(path)
+
     def test_rejects_invalid_function_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = self.write_json(directory, "functions.json", [{
