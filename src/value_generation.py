@@ -24,13 +24,66 @@ NUMBER_COMPLETE = re.compile(
 class ValueGeneration(RegexGeneration):
     """Generate typed values on the shared token stream."""
 
+    @staticmethod
+    def quoted_spans(text: str) -> list[str]:
+        """Return quoted spans without using regex-based extraction."""
+        spans: list[str] = []
+        for quote in ('"', "'"):
+            index = 0
+            while index < len(text):
+                if text[index] != quote:
+                    index += 1
+                    continue
+                index += 1
+                value: list[str] = []
+                while index < len(text):
+                    if text[index] == "\\" and index + 1 < len(text):
+                        value.append(text[index + 1])
+                        index += 2
+                        continue
+                    if text[index] == quote:
+                        spans.append("".join(value))
+                        break
+                    value.append(text[index])
+                    index += 1
+        return spans
+
+    def generate_source(
+        self,
+        prompt: list[int],
+        user_input: str,
+        limit: int = 48,
+    ) -> str:
+        """Choose and copy a contiguous token span using a token trie."""
+        source_ids = self.model.encode(user_input)[0].tolist()
+        if not source_ids:
+            prompt.append(self.vocabulary.quote)
+            return ""
+        quoted = self.quoted_spans(user_input)
+        if quoted:
+            choices = {
+                self.model.decode(self.model.encode(value)[0].tolist())
+                for value in quoted
+                if self.model.encode(value)[0].tolist()
+            }
+        else:
+            choices = {
+                self.model.decode(source_ids[start:stop])
+                for start in range(len(source_ids))
+                for stop in range(
+                    start + 1, min(len(source_ids), start + limit) + 1
+                )
+            }
+        value = self.choose_trie_token_ids(prompt, sorted(choices))
+        prompt.append(self.vocabulary.quote)
+        return value
+
     def generate_string(
         self,
         prompt: list[int],
         regex_kind: str | None = None,
         user_input: str = "",
         limit: int = 48,
-        literal_candidates: list[str] | None = None,
     ) -> str:
         """Generate safe content and always close its JSON quote."""
         content = ""
@@ -51,24 +104,13 @@ class ValueGeneration(RegexGeneration):
                     content + token_text, user_input
                 ):
                     mask[token_id] = True
-            if literal_candidates is not None:
-                mask[:] = False
-                for token_id, token_text in enumerate(self.vocabulary.strs):
-                    if any(
-                        candidate.startswith(content + token_text)
-                        for candidate in literal_candidates
-                    ):
-                        mask[token_id] = True
             close_mask = np.zeros(len(logits), dtype=bool)
             close_mask[:copy_size] = self.vocabulary.close_mask[:copy_size]
             if not content:
                 lead_space = np.zeros(len(logits), dtype=bool)
                 lead_space[:copy_size] = self.vocabulary.lead_space[:copy_size]
                 mask &= ~lead_space
-            if literal_candidates is not None:
-                if any(candidate == content for candidate in literal_candidates):
-                    mask |= close_mask
-            elif regex_kind is not None or not self.literal_incomplete(
+            if regex_kind is not None or not self.literal_incomplete(
                 content, user_input
             ):
                 mask |= close_mask
@@ -83,11 +125,6 @@ class ValueGeneration(RegexGeneration):
                     content += token_text
                     continue
                 proposed_close = content + prefix
-                if literal_candidates is not None and not any(
-                    candidate == proposed_close
-                    for candidate in literal_candidates
-                ):
-                    continue
                 if (
                     regex_kind is None
                     and prefix

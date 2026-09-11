@@ -224,7 +224,7 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 `ParameterValueState` resolves each schema type through `ValueHandlerRegistry`. The structural state machine remains responsible for keys and punctuation; value handlers own only value syntax.
 
-String generation uses vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Unsafe fragments are rejected or JSON-escaped. Parameters whose names indicate source/input/text are constrained to quoted literal candidates from the request, preventing unrelated continuation. String values otherwise remain model-generated.
+String generation uses vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Unsafe fragments are rejected or JSON-escaped. Parameters whose names indicate source/input/text are handled as source values: quoted spans in the request are preferred and selected through a token-ID Trie, preventing suffixes such as instructions after the closing quote from leaking into the source value. Unquoted sources fall back to contiguous token spans of at most 48 tokens. Other string values remain model-generated.
 
 Number generation maintains the text produced so far. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the same mechanism with an additional integer-only expression, excluding decimal points and exponents.
 
@@ -238,7 +238,7 @@ For functions whose descriptions refer to regular expressions, the decoder ident
 - `exact` for one literal word or text value;
 - `general` for repeated categories or other regular-expression structures.
 
-The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. It also removes an unnecessary trailing `.*` when a shorter completed pattern is sufficient.
+The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. Alternative expressions cannot stop after a trailing `|`, and it also removes an unnecessary trailing `.*` when a shorter completed pattern is sufficient.
 
 Replacement parameters are identified separately. If the model infers a single-symbol replacement but emits repeated copies or wraps it in brackets, the value is reduced to one symbol. The prompt asks for the actual replacement text rather than its description; no word-to-symbol dictionary is applied. Explicitly quoted replacement literals are preserved exactly.
 
@@ -336,7 +336,7 @@ Quotes and backslashes can make an otherwise correct model value invalid JSON. T
 
 ### Regex completion
 
-The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, and final refinement were added to stop at a reusable pattern.
+The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, explicit alternative-boundary handling, and final refinement were added to stop at a reusable pattern. Source extraction similarly prefers tokenizer-validated quoted spans so trailing instruction text is not copied into the source argument.
 
 ### Replacement symbols
 
@@ -359,17 +359,18 @@ The current tests cover:
 - custom value-handler registration and unknown-type errors;
 - complete-call JSON assembly and rejection of an empty function list;
 - number fractions, exponents, incomplete prefixes, and termination;
-- integer schema acceptance, negative integers, and decimal rejection;
+- negative integers, incomplete numeric prefixes, and decimal rejection;
 - both boolean literals;
 - empty strings, quote escaping, and backslash escaping;
 - regex-argument, replacement-argument, and regex-kind classification;
 - repeated, wrapped, and explicitly quoted replacement symbols;
+- quoted source-span extraction and regex alternative completion;
 - valid and invalid function/prompt file loading;
 - progress reporting, result order, and all-or-nothing saving;
 - normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
 - creation and contents of the final JSON result array.
 
-There are 47 deterministic unit tests in the current suite.
+There are 42 deterministic unit tests in the current suite.
 
 Run all unit tests:
 

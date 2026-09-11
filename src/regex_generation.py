@@ -168,9 +168,9 @@ class RegexGeneration(TokenGeneration):
             re.compile(pattern)
         except re.error:
             return False
-        if not any(character in pattern for character in "[](){}+*?\\.^$"):
+        if not any(character in pattern for character in "[](){}+*?|\\.^$"):
             return True
-        return pattern.endswith(("]", ")", "}", "+", "*", "?", "$"))
+        return not pattern.endswith(("\\", "|", "(", "[", "{"))
 
     @classmethod
     def _completed_regex_prefix(cls, pattern: str) -> str | None:

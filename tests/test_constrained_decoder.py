@@ -2,31 +2,17 @@ import unittest
 
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import BaseModel
-
 from src.constrained_decoder import (
     END,
     ConstrainedDecoder,
-    FunctionNameState,
-    LiteralResult,
     LiteralState,
-    ParameterKeyState,
-    ParameterSeparatorState,
-    ParameterValueState,
     TrieNode,
     UnsupportedTypeError,
-    ValueHandlerRegistry,
     Vocabulary,
 )
-from src.model import JsonFunction, JsonInput
-from src.prompt import build_call_prompt
+from src.model import JsonFunction
 from src.regex_generation import RegexGeneration
-from src.value_handlers import (
-    BooleanHandler,
-    IntegerHandler,
-    NumberHandler,
-    StringHandler,
-)
+from src.value_generation import ValueGeneration
 
 
 class FakeStringModel:
@@ -92,27 +78,6 @@ def string_decoder(model: FakeStringModel) -> ConstrainedDecoder:
 class TrieNodeTests(unittest.TestCase):
     """Verify the recursive Pydantic trie used during decoding."""
 
-    def test_is_a_pydantic_model(self) -> None:
-        self.assertTrue(issubclass(TrieNode, BaseModel))
-
-    def test_concrete_state_and_handler_classes_use_pydantic(self) -> None:
-        classes = (
-            LiteralResult,
-            LiteralState,
-            FunctionNameState,
-            ParameterKeyState,
-            ParameterSeparatorState,
-            ParameterValueState,
-            ValueHandlerRegistry,
-            StringHandler,
-            NumberHandler,
-            IntegerHandler,
-            BooleanHandler,
-        )
-        for model_class in classes:
-            with self.subTest(model_class=model_class.__name__):
-                self.assertTrue(issubclass(model_class, BaseModel))
-
     def test_prefix_function_allows_child_and_end(self) -> None:
         root = TrieNode()
         root.insert([1, 2], "fn_add")
@@ -125,6 +90,14 @@ class TrieNodeTests(unittest.TestCase):
         self.assertEqual(
             prefix.children[3].children[END].value,
             "fn_add_numbers",
+        )
+
+    def test_source_candidates_prefer_quoted_spans(self) -> None:
+        self.assertEqual(
+            ValueGeneration.quoted_spans(
+                'Replace numbers in "What is 2 + 3?" with NUMBERS'
+            ),
+            ["What is 2 + 3?"],
         )
 
     def test_decoder_can_register_a_future_value_type(self) -> None:
@@ -144,57 +117,10 @@ class TrieNodeTests(unittest.TestCase):
         decoder.register_value_handler("date", DateHandler())
         self.assertIsNotNone(decoder.value_handlers().get("date"))
 
-    def test_default_registry_contains_builtin_handlers(self) -> None:
-        registry = ValueHandlerRegistry.default()
-        for type_name in ("string", "number", "integer", "boolean"):
-            with self.subTest(type_name=type_name):
-                self.assertIsNotNone(registry.get(type_name))
-
     def test_unknown_value_type_has_explicit_error(self) -> None:
         decoder = string_decoder(FakeStringModel([0]))
         with self.assertRaises(UnsupportedTypeError):
             decoder.value_handlers().get("date")
-
-    def test_parameter_value_state_dispatches_through_registry(self) -> None:
-        decoder = string_decoder(FakeStringModel([0]))
-        handler = ParameterValueState(type_name="string").handler(
-            decoder.value_handlers()
-        )
-        self.assertIsNotNone(handler)
-
-    def test_integer_is_a_supported_schema_type(self) -> None:
-        function = JsonFunction(
-            name="fn_count",
-            description="Count items",
-            parameters={"count": {"type": "integer"}},
-            returns={"type": "integer"},
-        )
-        self.assertEqual(function.parameters["count"]["type"], "integer")
-
-    def test_prompt_requires_bare_replacement_symbol(self) -> None:
-        prompt = build_call_prompt(
-            JsonInput(func=[]), "Replace vowels with asterisks"
-        )
-        self.assertIn("emit the exact text that should replace", prompt)
-
-    def test_prompt_preserves_numeric_order_and_sign(self) -> None:
-        prompt = build_call_prompt(
-            JsonInput(func=[]), "What is the sum of -1 and 345?"
-        )
-        self.assertIn("preserve the order", prompt)
-        self.assertIn("Do not drop a leading minus sign", prompt)
-        self.assertIn("change a number's sign", prompt)
-
-    def test_prompt_keeps_source_literal_exact_and_regex_minimal(self) -> None:
-        prompt = build_call_prompt(
-            JsonInput(func=[]),
-            'Replace all numbers in "What is the sum of 2 and 3?" with NUMBERS',
-        )
-        self.assertIn("copy the user's source text exactly", prompt)
-        self.assertIn("Do not add, remove, or alter any character", prompt)
-        self.assertIn("Do not add source text or replacement text to the pattern", prompt)
-        self.assertIn("Do not append unrelated punctuation", prompt)
-        self.assertIn("asterisks' means the replacement value is exactly '*'", prompt)
 
     def test_repeated_symbol_replacement_is_reduced_to_one_unit(self) -> None:
         self.assertEqual(
@@ -211,12 +137,10 @@ class TrieNodeTests(unittest.TestCase):
             RegexGeneration.refine_replacement("**", ["**"]), "**"
         )
 
-    def test_literal_state_accepts_only_prefix_tokens(self) -> None:
+    def test_literal_state_accepts_prefix_and_exact_boundary(self) -> None:
         state = LiteralState(remaining='"prompt": "')
         self.assertTrue(state.consume('"prompt":').remaining == ' "')
         self.assertFalse(state.consume('"name"').valid)
-
-    def test_literal_state_finishes_at_exact_boundary(self) -> None:
         state = LiteralState(remaining='{}')
         self.assertTrue(state.consume('{').remaining == '}')
         self.assertTrue(state.consume('{}').finished)

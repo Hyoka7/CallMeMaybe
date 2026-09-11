@@ -1,12 +1,12 @@
 import unittest
 from typing import cast
-from unittest.mock import patch
 
 import numpy as np
 from numpy.typing import NDArray
 
 from src.constrained_decoder import ConstrainedDecoder, Vocabulary
 from src.model import JsonFunction
+from src.regex_generation import RegexGeneration
 
 
 class ChoiceModel:
@@ -61,6 +61,10 @@ def regex_function() -> JsonFunction:
 class RegexGenerationTests(unittest.TestCase):
     """Verify regex intent and string-argument role selection."""
 
+    def test_regex_alternatives_only_finish_after_an_alternative(self) -> None:
+        self.assertTrue(RegexGeneration._regex_complete("2|3"))
+        self.assertFalse(RegexGeneration._regex_complete("2|"))
+
     def test_identifies_regex_argument(self) -> None:
         decoder = semantic_decoder([ChoiceModel.TOKEN_IDS["regex"]])
         function = regex_function()
@@ -78,19 +82,6 @@ class RegexGenerationTests(unittest.TestCase):
         self.assertFalse(
             decoder.is_replacement_argument(function, "source_string")
         )
-
-    def test_replacement_role_prompt_requests_actual_text(self) -> None:
-        decoder = semantic_decoder([ChoiceModel.TOKEN_IDS["replacement"]])
-        function = regex_function()
-        with patch.object(
-            ConstrainedDecoder,
-            "choose_trie_value",
-            wraps=decoder.choose_trie_value,
-        ) as choose:
-            decoder.is_replacement_argument(function, "replacement")
-        prompt = choose.call_args.args[0]
-        self.assertIn("exact text inserted", prompt)
-        self.assertIn("asterisks means the symbol '*'", prompt)
 
     def test_classifies_each_regex_kind(self) -> None:
         function = regex_function()

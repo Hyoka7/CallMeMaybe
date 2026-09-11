@@ -1,6 +1,6 @@
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from pydantic import ValidationError
 

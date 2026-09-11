@@ -132,21 +132,15 @@ class BooleanModel:
 class BooleanGenerationTests(unittest.TestCase):
     """Verify that boolean generation selects only JSON literals."""
 
-    def test_selects_true(self) -> None:
-        decoder = ConstrainedDecoder.model_construct(
-            model=BooleanModel("true"), vocabulary=None
-        )
-        prompt: list[int] = []
-        self.assertEqual(decoder.generate_boolean(prompt), [1])
-        self.assertEqual(prompt, [1])
-
-    def test_selects_false(self) -> None:
-        decoder = ConstrainedDecoder.model_construct(
-            model=BooleanModel("false"), vocabulary=None
-        )
-        prompt: list[int] = []
-        self.assertEqual(decoder.generate_boolean(prompt), [2])
-        self.assertEqual(prompt, [2])
+    def test_selects_json_boolean_literals(self) -> None:
+        for selected, token_id in (("true", 1), ("false", 2)):
+            with self.subTest(selected=selected):
+                decoder = ConstrainedDecoder.model_construct(
+                    model=BooleanModel(selected), vocabulary=None
+                )
+                prompt: list[int] = []
+                self.assertEqual(decoder.generate_boolean(prompt), [token_id])
+                self.assertEqual(prompt, [token_id])
 
 
 if __name__ == "__main__":

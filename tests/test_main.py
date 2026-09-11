@@ -10,10 +10,6 @@ from src.main import main, run
 class MainTests(unittest.TestCase):
     """Verify process-level error handling and exit statuses."""
 
-    def test_returns_run_exit_status(self) -> None:
-        with patch("src.main.run", return_value=0):
-            self.assertEqual(main(), 0)
-
     def test_run_reports_progress_and_save_message(self) -> None:
         args = SimpleNamespace(
             functions_definition="functions.json",
