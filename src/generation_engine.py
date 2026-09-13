@@ -69,33 +69,12 @@ class ConstrainedDecoder(ValueGeneration):
                 regex_kind = None
                 if self.is_regex_argument(function, name):
                     regex_kind = self.regex_kind(function, name, user_input)
-                value_start = len(structure_prompt)
                 if self.is_source_argument(name) and regex_kind is None:
                     value = self.generate_source(structure_prompt, user_input)
                 else:
                     value = self.generate_string(
                         structure_prompt, regex_kind, user_input
                     )
-                if self.is_replacement_argument(function, name):
-                    replacement = self.refine_replacement(
-                        value, self.extract_literal_candidates(user_input)
-                    )
-                    if replacement != value:
-                        del structure_prompt[value_start:]
-                        structure_prompt.extend(
-                            self.model.encode(replacement)[0].tolist()
-                        )
-                        structure_prompt.append(self.vocabulary.quote)
-                        value = replacement
-                if regex_kind is not None:
-                    refined = self.refine_regex(value)
-                    if refined != value:
-                        del structure_prompt[value_start:]
-                        structure_prompt.extend(
-                            self.model.encode(refined)[0].tolist()
-                        )
-                        structure_prompt.append(self.vocabulary.quote)
-                        value = refined
                 escaped = json.dumps(value, ensure_ascii=False)[1:-1]
                 output.extend(self.model.encode(escaped)[0].tolist())
                 output.append(self.vocabulary.quote)

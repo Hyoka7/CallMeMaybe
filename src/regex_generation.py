@@ -61,30 +61,6 @@ class RegexGeneration(TokenGeneration):
         )
         return selected == parameter_name
 
-    @staticmethod
-    def refine_replacement(
-        value: str, explicit_literals: list[str]
-    ) -> str:
-        """Reduce an inferred single-symbol replacement to one unit."""
-        if value in explicit_literals:
-            return value
-        if (
-            len(value) > 1
-            and len(set(value)) == 1
-            and not value[0].isalnum()
-            and not value[0].isspace()
-        ):
-            return value[0]
-        pairs = {"(": ")", "[": "]", "{": "}"}
-        if (
-            len(value) == 3
-            and pairs.get(value[0]) == value[2]
-            and not value[1].isalnum()
-            and not value[1].isspace()
-        ):
-            return value[1]
-        return value
-
     def is_regex_argument(
         self,
         function: JsonFunction,
@@ -181,9 +157,3 @@ class RegexGeneration(TokenGeneration):
             if structural and cls._regex_complete(prefix):
                 return prefix
         return None
-
-    def refine_regex(self, pattern: str) -> str:
-        """Enforce the prompt's shortest-pattern invariant."""
-        if not pattern.endswith(".*") or len(pattern) <= 2:
-            return pattern
-        return pattern[:-2]

@@ -2,6 +2,7 @@ import unittest
 
 import numpy as np
 from numpy.typing import NDArray
+
 from src.constrained_decoder import (
     END,
     ConstrainedDecoder,
@@ -11,8 +12,6 @@ from src.constrained_decoder import (
     Vocabulary,
 )
 from src.model import JsonFunction
-from src.regex_generation import RegexGeneration
-from src.value_generation import ValueGeneration
 
 
 class FakeStringModel:
@@ -22,8 +21,8 @@ class FakeStringModel:
         self.ranked_tokens = iter(ranked_tokens)
         self.encoded: dict[str, list[int]] = {
             '"': [0],
-            r'\"': [3, 0],
-            r'a\"b': [2, 3, 0, 2],
+            r"\"": [3, 0],
+            r"a\"b": [2, 3, 0, 2],
             r"\\": [3, 3],
         }
 
@@ -92,14 +91,6 @@ class TrieNodeTests(unittest.TestCase):
             "fn_add_numbers",
         )
 
-    def test_source_candidates_prefer_quoted_spans(self) -> None:
-        self.assertEqual(
-            ValueGeneration.quoted_spans(
-                'Replace numbers in "What is 2 + 3?" with NUMBERS'
-            ),
-            ["What is 2 + 3?"],
-        )
-
     def test_decoder_can_register_a_future_value_type(self) -> None:
         decoder = string_decoder(FakeStringModel([0]))
 
@@ -121,21 +112,6 @@ class TrieNodeTests(unittest.TestCase):
         decoder = string_decoder(FakeStringModel([0]))
         with self.assertRaises(UnsupportedTypeError):
             decoder.value_handlers().get("date")
-
-    def test_repeated_symbol_replacement_is_reduced_to_one_unit(self) -> None:
-        self.assertEqual(
-            RegexGeneration.refine_replacement("**", []), "*"
-        )
-
-    def test_wrapped_symbol_replacement_is_unwrapped(self) -> None:
-        self.assertEqual(
-            RegexGeneration.refine_replacement("(*)", []), "*"
-        )
-
-    def test_explicit_replacement_literal_is_preserved(self) -> None:
-        self.assertEqual(
-            RegexGeneration.refine_replacement("**", ["**"]), "**"
-        )
 
     def test_literal_state_accepts_prefix_and_exact_boundary(self) -> None:
         state = LiteralState(remaining='"prompt": "')

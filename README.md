@@ -224,7 +224,7 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 `ParameterValueState` resolves each schema type through `ValueHandlerRegistry`. The structural state machine remains responsible for keys and punctuation; value handlers own only value syntax.
 
-String generation uses vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Unsafe fragments are rejected or JSON-escaped. Parameters whose names indicate source/input/text are handled as source values: quoted spans in the request are preferred and selected through a token-ID Trie, preventing suffixes such as instructions after the closing quote from leaking into the source value. Unquoted sources fall back to contiguous token spans of at most 48 tokens. Other string values remain model-generated.
+String generation uses vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Unsafe fragments are rejected or JSON-escaped. Parameters whose names indicate source/input/text are handled as source values: contiguous token spans of at most 48 tokens are offered to a semantic Trie selection prompt, which asks the model to choose only the requested source text. Other string values remain model-generated.
 
 Number generation maintains the text produced so far. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the same mechanism with an additional integer-only expression, excluding decimal points and exponents.
 
@@ -240,17 +240,7 @@ For functions whose descriptions refer to regular expressions, the decoder ident
 
 The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. Alternative expressions cannot stop after a trailing `|`, and it also removes an unnecessary trailing `.*` when a shorter completed pattern is sufficient.
 
-Replacement parameters are identified separately. If the model infers a single-symbol replacement but emits repeated copies or wraps it in brackets, the value is reduced to one symbol. The prompt asks for the actual replacement text rather than its description; no word-to-symbol dictionary is applied. Explicitly quoted replacement literals are preserved exactly.
-
-Examples:
-
-```text
-Inferred "**"  -> "*"
-Inferred "(*)" -> "*"
-Explicit "**"  -> "**"
-```
-
-This rule operates on symbol structure and replacement role; it does not map specific words such as "asterisk" to hard-coded output values.
+Replacement parameters are identified separately, but the generated replacement text is not rewritten after generation. The value returned by the model is preserved as-is. The prompt may describe the intended replacement semantics, but it does not act as a post-processing dictionary.
 
 ### Final validation
 
@@ -336,11 +326,11 @@ Quotes and backslashes can make an otherwise correct model value invalid JSON. T
 
 ### Regex completion
 
-The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, explicit alternative-boundary handling, and final refinement were added to stop at a reusable pattern. Source extraction similarly prefers tokenizer-validated quoted spans so trailing instruction text is not copied into the source argument.
+The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, and explicit alternative-boundary handling constrain generation, but the generated value is not rewritten after the fact. Source extraction offers tokenizer-derived contiguous spans to a semantic selection prompt, so the source boundary does not depend on quotation marks.
 
-### Replacement symbols
+### Replacement values
 
-Plural descriptions could lead the model to repeat a replacement symbol, while some outputs wrapped a symbol in parentheses. Replacement-role detection and symbol-structure refinement address these cases without hard-coding a vocabulary word-to-symbol mapping.
+Replacement-role detection remains, but generated replacement values are preserved without shape-changing post-processing.
 
 ### Five-minute execution target
 
@@ -363,8 +353,8 @@ The current tests cover:
 - both boolean literals;
 - empty strings, quote escaping, and backslash escaping;
 - regex-argument, replacement-argument, and regex-kind classification;
-- repeated, wrapped, and explicitly quoted replacement symbols;
-- quoted source-span extraction and regex alternative completion;
+- replacement values preserved without shape-changing post-processing;
+- semantic source-span selection and regex alternative completion;
 - valid and invalid function/prompt file loading;
 - progress reporting, result order, and all-or-nothing saving;
 - normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
