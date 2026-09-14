@@ -12,13 +12,6 @@ from src.token_generation import TokenGeneration
 class RegexGeneration(TokenGeneration):
     """Interpret regex intent using the structural token selector."""
 
-    _regex_roles: dict[tuple[str, tuple[str, ...]], str | None] = PrivateAttr(
-        default_factory=dict
-    )
-    _replacement_roles: dict[
-        tuple[str, tuple[str, ...]], str | None
-    ] = PrivateAttr(default_factory=dict)
-
     _string_roles: dict[
         tuple[str, tuple[str, ...], str, str], str
     ] = PrivateAttr(default_factory=dict)
@@ -72,71 +65,6 @@ class RegexGeneration(TokenGeneration):
         )
         self._string_roles[cache_key] = role
         return role
-
-    def is_replacement_argument(
-        self, function: JsonFunction, parameter_name: str
-    ) -> bool:
-        """Choose the argument that stores replacement text."""
-        string_names = tuple(
-            name for name, definition in function.parameters.items()
-            if definition["type"] == "string"
-        )
-        cache_key = (function.description, string_names)
-        if cache_key in self._replacement_roles:
-            return self._replacement_roles[cache_key] == parameter_name
-        prompt = (
-            "Choose which string argument stores the replacement value "
-            "inserted for every match. Do not choose source text, matching "
-            "patterns, names, or other values. Choose NONE if there is no "
-            "replacement argument. The value must be the exact text inserted "
-            "into the source, not the name or description of that text. For "
-            "example, asterisks means the symbol '*', not the word "
-            "'asterisk' or 'asterisks'.\n"
-            f"Function purpose: {function.description}\n"
-            f"String arguments: {', '.join(string_names)}\n"
-            'Replacement argument: "'
-        )
-        selected = self.choose_trie_value(
-            prompt, list(string_names) + ["NONE"]
-        )
-        self._replacement_roles[cache_key] = (
-            None if selected == "NONE" else selected
-        )
-        return selected == parameter_name
-
-    def is_regex_argument(
-        self,
-        function: JsonFunction,
-        parameter_name: str,
-    ) -> bool:
-        """Choose the pattern argument by comparing the complete schema."""
-        string_names = tuple(
-            name for name, definition in function.parameters.items()
-            if definition["type"] == "string"
-        )
-        cache_key = (function.description, string_names)
-        description = function.description.lower()
-        if not any(
-            marker in description for marker in ("regex", "regular expression")
-        ):
-            self._regex_roles[cache_key] = None
-            return False
-        if cache_key in self._regex_roles:
-            return self._regex_roles[cache_key] == parameter_name
-        prompt = (
-            "Choose which string argument itself stores the reusable regular "
-            "expression used for matching. Do not choose source text, "
-            "replacement text, names, or other direct values. Choose NONE if "
-            "this function has no regex-pattern argument.\n"
-            f"Function purpose: {function.description}\n"
-            f"String arguments: {', '.join(string_names)}\n"
-            "Pattern argument: \""
-        )
-        selected = self.choose_trie_value(
-            prompt, list(string_names) + ["NONE"]
-        )
-        self._regex_roles[cache_key] = None if selected == "NONE" else selected
-        return selected == parameter_name
 
     def regex_kind(
         self,

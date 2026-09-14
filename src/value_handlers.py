@@ -68,14 +68,10 @@ class StringHandler(BaseModel):
         parameter_name: str,
         function: JsonFunction,
     ) -> Any:
-        """Generate a string, including regex handling when applicable."""
-        regex_kind = None
-        if decoder.is_regex_argument(function, parameter_name):
-            regex_kind = decoder.regex_kind(
-                function, parameter_name, user_input
-            )
+        """Generate an ordinary string through the shared generator."""
+        del parameter_name, function
         decoder.append_tokens(prompt, [], '"')
-        return decoder.generate_string(prompt, regex_kind, user_input)
+        return decoder.generate_string(prompt, None, user_input)
 
 
 class NumberHandler(BaseModel):
