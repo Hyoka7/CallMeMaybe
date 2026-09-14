@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from src.constrained_decoder import ConstrainedDecoder, Vocabulary
+from src.value_generation import ValueGeneration
 
 
 class ScriptedLogitsModel:
@@ -111,6 +112,18 @@ class NumberGenerationTests(unittest.TestCase):
                 self.assertEqual(
                     decoder.generate_number([], "}"), expected
                 )
+
+
+class QuotedSpanTests(unittest.TestCase):
+    """Verify quoted source spans stop at each closing quote."""
+
+    def test_quoted_spans_stop_at_each_closing_quote(self) -> None:
+        self.assertEqual(
+            ValueGeneration.quoted_spans(
+                "Substitute the word 'cat' with 'dog' in 'The cat sat'"
+            ),
+            ["cat", "dog", "The cat sat"],
+        )
 
 
 class BooleanModel:

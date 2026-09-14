@@ -27,25 +27,39 @@ class ValueGeneration(RegexGeneration):
     @staticmethod
     def quoted_spans(text: str) -> list[str]:
         """Find quoted candidate spans for an already classified source."""
-        spans: list[str] = []
-        for quote in ('"', "'"):
-            index = 0
-            while index < len(text):
-                if text[index] != quote:
-                    index += 1
-                    continue
+        return [
+            value
+            for _, _, value in ValueGeneration.quoted_spans_with_positions(
+                text
+            )
+        ]
+
+    @staticmethod
+    def quoted_spans_with_positions(
+        text: str,
+    ) -> list[tuple[int, int, str]]:
+        """Find quoted spans while retaining their source positions."""
+        spans: list[tuple[int, int, str]] = []
+        index = 0
+        while index < len(text):
+            if text[index] not in {'"', "'"}:
                 index += 1
-                value: list[str] = []
-                while index < len(text):
-                    if text[index] == "\\" and index + 1 < len(text):
-                        value.append(text[index + 1])
-                        index += 2
-                        continue
-                    if text[index] == quote:
-                        spans.append("".join(value))
-                        break
-                    value.append(text[index])
+                continue
+            quote = text[index]
+            start = index
+            index += 1
+            value: list[str] = []
+            while index < len(text):
+                if text[index] == "\\" and index + 1 < len(text):
+                    value.append(text[index + 1])
+                    index += 2
+                    continue
+                if text[index] == quote:
+                    spans.append((start, index + 1, "".join(value)))
                     index += 1
+                    break
+                value.append(text[index])
+                index += 1
         return spans
 
     def generate_string(

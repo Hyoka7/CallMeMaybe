@@ -224,7 +224,7 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 `ParameterValueState` validates each schema type through `ValueHandlerRegistry`. For the built-in JSON types, `generate_parameters()` then routes directly to the shared string, number, integer, and boolean generators; the registry remains the extension point for custom types.
 
-Before generating a string, the model classifies the parameter as `source`, `regex`, `replacement`, or `ordinary`, using the function purpose, all string argument names, the current argument name, and the request. The selected role dispatches to its dedicated path. String values use vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Generated replacement values are not rewritten after generation.
+Before generating a string, the model classifies the parameter as `source`, `regex`, `replacement`, or `ordinary`, using the function purpose, all string argument names, the current argument name, and the request. The selected role dispatches to its dedicated path. String values use vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Replacement values use the normal string generator and are not rewritten after generation.
 
 Number generation maintains the text produced so far. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the same mechanism with an additional integer-only expression, excluding decimal points and exponents.
 
@@ -240,7 +240,7 @@ String role classification is model-driven rather than based on a hard-coded sou
 
 The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. Alternative expressions cannot stop after a trailing `|`. Generated regex and replacement values are not shape-transformed after generation.
 
-Replacement values use the normal string generator and are not rewritten after generation.
+Replacement values use the normal string generation path. The prompt asks for the exact text to insert, and the selected value is copied without post-generation rewriting.
 
 ### Final validation
 
@@ -330,7 +330,7 @@ The model sometimes continued a useful regex with source text, replacement text,
 
 ### Replacement values
 
-Replacement is one of the four AI-classified string roles. Generated replacement values are preserved without shape-changing post-processing.
+Replacement is one of the four AI-classified string roles. Candidate selection excludes quoted source text and instruction fragments. Descriptive symbol names are constrained before generation, and the selected replacement value is preserved without shape-changing post-processing.
 
 ### Five-minute execution target
 
@@ -353,12 +353,13 @@ The current tests cover:
 - both boolean literals;
 - empty strings, quote escaping, and backslash escaping;
 - four-way string role classification and dedicated dispatch;
+- quoted-span boundaries for source extraction;
 - valid and invalid function/prompt file loading;
 - progress reporting, result order, and all-or-nothing saving;
 - normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
 - creation and contents of the final JSON result array.
 
-There are 33 deterministic unit tests in the current suite. Redundant legacy-helper checks and duplicate-shaped prefix/error cases have been removed or consolidated; the remaining tests protect distinct user-visible or boundary-level behavior.
+There are 35 deterministic unit tests in the current suite. Redundant legacy-helper checks and duplicate-shaped prefix/error cases have been removed or consolidated; the remaining tests protect distinct user-visible or boundary-level behavior.
 
 Run all unit tests:
 
@@ -439,5 +440,3 @@ AI assistance was used for:
 - drafting and reviewing deterministic unit tests;
 - analyzing performance trade-offs between per-token logits calls and validated fixed-literal output;
 - reorganizing modules and drafting documentation.
-
-
