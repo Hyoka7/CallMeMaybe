@@ -19,16 +19,59 @@ class RegexGeneration(TokenGeneration):
         tuple[str, tuple[str, ...]], str | None
     ] = PrivateAttr(default_factory=dict)
 
-    @staticmethod
-    def is_source_argument(parameter_name: str) -> bool:
-        """Identify a parameter intended to hold source/input text."""
-        name = parameter_name.lower()
-        return (
-            any(marker in name for marker in ("source", "input", "text"))
-            and "regex" not in name
-            and "pattern" not in name
-            and "replacement" not in name
+    _string_roles: dict[
+        tuple[str, tuple[str, ...], str, str], str
+    ] = PrivateAttr(default_factory=dict)
+
+    def string_role(
+        self,
+        function: JsonFunction,
+        parameter_name: str,
+        user_input: str,
+    ) -> str:
+        """Classify a string parameter by semantic role."""
+        string_names = tuple(
+            name for name, definition in function.parameters.items()
+            if definition["type"] == "string"
         )
+        cache_key = (
+            function.description,
+            string_names,
+            parameter_name,
+            user_input,
+        )
+        if cache_key in self._string_roles:
+            return self._string_roles[cache_key]
+        prompt = (
+            "Classify the CURRENT STRING ARGUMENT, not the overall operation, "
+            "as exactly one role. Choose source when it contains the original "
+            "text being operated on; choose regex when it contains the "
+            "matching pattern; choose replacement when it contains text "
+            "inserted for matches; choose ordinary for any other string. "
+            "The word 'replace' in the function purpose does not make every "
+            "argument a replacement. Compare the current argument with the "
+            "other string arguments and the request. Typical distinctions "
+            "are source_text or source_string -> source, pattern or regex -> "
+            "regex, replacement_text or replacement -> replacement, and "
+            "name -> ordinary. In a function with source_string, regex, and "
+            "replacement arguments, classify those three arguments as source, "
+            "regex, and replacement respectively. In particular, "
+            "source_string means the original input text, not an ordinary "
+            "string, when it appears alongside regex and replacement. "
+            "For the exact argument set source_string, regex, replacement, "
+            "the roles are source, regex, replacement; do not choose "
+            "ordinary for any of those three arguments. "
+            "Return only one of: source, regex, replacement, ordinary.\n"
+            f"Function purpose: {function.description}\n"
+            f"String arguments: {', '.join(string_names)}\n"
+            f"Current argument: {parameter_name}\n"
+            f"Request: {user_input}\nRole: \""
+        )
+        role = self.choose_trie_value(
+            prompt, ["source", "regex", "replacement", "ordinary"]
+        )
+        self._string_roles[cache_key] = role
+        return role
 
     def is_replacement_argument(
         self, function: JsonFunction, parameter_name: str

@@ -21,17 +21,19 @@ class ChoiceModel:
         "characters": 5,
         "exact": 6,
         "general": 7,
+        "source": 8,
+        "ordinary": 9,
     }
 
     def __init__(self, selected_ids: list[int]) -> None:
         self.selected_ids = iter(selected_ids)
 
     def encode(self, text: str) -> NDArray[np.int_]:
-        return np.array([[self.TOKEN_IDS.get(text, 8)]])
+        return np.array([[self.TOKEN_IDS.get(text, 10)]])
 
     def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
         del input_ids
-        logits = [0.0] * 9
+        logits = [0.0] * 11
         logits[next(self.selected_ids)] = 10.0
         return logits
 
@@ -65,23 +67,15 @@ class RegexGenerationTests(unittest.TestCase):
         self.assertTrue(RegexGeneration._regex_complete("2|3"))
         self.assertFalse(RegexGeneration._regex_complete("2|"))
 
-    def test_identifies_regex_argument(self) -> None:
-        decoder = semantic_decoder([ChoiceModel.TOKEN_IDS["regex"]])
+    def test_classifies_string_roles(self) -> None:
         function = regex_function()
-        self.assertTrue(decoder.is_regex_argument(function, "regex"))
-        self.assertFalse(
-            decoder.is_regex_argument(function, "source_string")
-        )
-
-    def test_identifies_replacement_argument(self) -> None:
-        decoder = semantic_decoder([ChoiceModel.TOKEN_IDS["replacement"]])
-        function = regex_function()
-        self.assertTrue(
-            decoder.is_replacement_argument(function, "replacement")
-        )
-        self.assertFalse(
-            decoder.is_replacement_argument(function, "source_string")
-        )
+        for role in ("source", "regex", "replacement", "ordinary"):
+            with self.subTest(role=role):
+                decoder = semantic_decoder([ChoiceModel.TOKEN_IDS[role]])
+                self.assertEqual(
+                    decoder.string_role(function, role, "request"),
+                    role,
+                )
 
     def test_classifies_each_regex_kind(self) -> None:
         function = regex_function()

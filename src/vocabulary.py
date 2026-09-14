@@ -80,7 +80,7 @@ class Vocabulary(BaseModel):
                 ):
                     close_mask[token_id] = True
                     close_prefix[token_id] = prefix
-            number_text = text[1:] if text.startswith(" ") else text
+            number_text = text.removeprefix(" ")
             if number_text and all(
                 char in "-+.eE0123456789" for char in number_text
             ):

@@ -24,35 +24,29 @@ NUMBER_COMPLETE = re.compile(
 class ValueGeneration(RegexGeneration):
     """Generate typed values on the shared token stream."""
 
-    def generate_source(
-        self,
-        prompt: list[int],
-        user_input: str,
-        limit: int = 48,
-    ) -> str:
-        """Choose and copy a contiguous token span using a token trie."""
-        source_ids = self.model.encode(user_input)[0].tolist()
-        if not source_ids:
-            prompt.append(self.vocabulary.quote)
-            return ""
-        choices = {
-            self.model.decode(source_ids[start:stop])
-            for start in range(len(source_ids))
-            for stop in range(
-                start + 1, min(len(source_ids), start + limit) + 1
-            )
-        }
-        selection_prompt = (
-            "Select the exact source/input text from the request for the "
-            "source argument. Return only the source text itself. Do not "
-            "include instructions, operation names, replacement text, or "
-            "surrounding explanation.\n"
-            f"Request: {user_input}\nSource text: \""
-        )
-        value = self.choose_trie_value(selection_prompt, sorted(choices))
-        prompt.extend(self.model.encode(value)[0].tolist())
-        prompt.append(self.vocabulary.quote)
-        return value
+    @staticmethod
+    def quoted_spans(text: str) -> list[str]:
+        """Find quoted candidate spans for an already classified source."""
+        spans: list[str] = []
+        for quote in ('"', "'"):
+            index = 0
+            while index < len(text):
+                if text[index] != quote:
+                    index += 1
+                    continue
+                index += 1
+                value: list[str] = []
+                while index < len(text):
+                    if text[index] == "\\" and index + 1 < len(text):
+                        value.append(text[index + 1])
+                        index += 2
+                        continue
+                    if text[index] == quote:
+                        spans.append("".join(value))
+                        break
+                    value.append(text[index])
+                    index += 1
+        return spans
 
     def generate_string(
         self,
@@ -130,11 +124,48 @@ class ValueGeneration(RegexGeneration):
             fragment = self.vocabulary.strs[chosen]
             self.append_string_fragment(prompt, fragment, chosen)
             content = proposed
-        if regex_kind == "characters" and not content.endswith("]"):
-            content += "]"
-            prompt.extend(self.model.encode("]")[0].tolist())
         prompt.append(self.vocabulary.quote)
         return content
+
+    def generate_source(
+        self,
+        prompt: list[int],
+        user_input: str,
+        limit: int = 48,
+    ) -> str:
+        """Select and copy a source span through semantic Trie selection."""
+        source_ids = self.model.encode(user_input)[0].tolist()
+        if not source_ids:
+            prompt.append(self.vocabulary.quote)
+            return ""
+        quoted = self.quoted_spans(user_input)
+        if quoted:
+            choices = {
+                value for value in quoted
+                if self.model.encode(value)[0].tolist()
+            }
+        else:
+            choices = {
+                self.model.decode(source_ids[start:stop])
+                for start in range(len(source_ids))
+                for stop in range(
+                    start + 1, min(len(source_ids), start + limit) + 1
+                )
+            }
+        selection_prompt = (
+            "Select the exact source text for the source argument. Return "
+            "only the text being operated on, without instructions, operation "
+            "names, replacement text, or explanation. When the request says "
+            "to operate on text in quotes, select only the text inside those "
+            "quotes; do not include the quote character or words after the "
+            "closing quote such as 'with NUMBERS'. For example, in "
+            "'replace matches in \"TEXT\" with VALUE', the source is TEXT.\n"
+            f"Request: {user_input}\nSource text:"
+        )
+        value = self.choose_trie_value(selection_prompt, sorted(choices))
+        prompt.extend(self.model.encode(value)[0].tolist())
+        prompt.append(self.vocabulary.quote)
+        return value
 
     @staticmethod
     def extract_literal_candidates(user_input: str) -> list[str]:

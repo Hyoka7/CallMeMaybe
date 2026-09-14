@@ -222,25 +222,25 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 ### Typed value generation
 
-`ParameterValueState` resolves each schema type through `ValueHandlerRegistry`. The structural state machine remains responsible for keys and punctuation; value handlers own only value syntax.
+`ParameterValueState` validates each schema type through `ValueHandlerRegistry`. For the built-in JSON types, `generate_parameters()` then routes directly to the shared string, number, integer, and boolean generators; the registry remains the extension point for custom types.
 
-String generation uses vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Unsafe fragments are rejected or JSON-escaped. Parameters whose names indicate source/input/text are handled as source values: contiguous token spans of at most 48 tokens are offered to a semantic Trie selection prompt, which asks the model to choose only the requested source text. Other string values remain model-generated.
+Before generating a string, the model classifies the parameter as `source`, `regex`, `replacement`, or `ordinary`, using the function purpose, all string argument names, the current argument name, and the request. The selected role dispatches to its dedicated path. String values use vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Generated replacement values are not rewritten after generation.
 
 Number generation maintains the text produced so far. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the same mechanism with an additional integer-only expression, excluding decimal points and exponents.
 
 Boolean generation limits the choice to the token sequences for `true` and `false`.
 
-### Regex and replacement handling
+### String role handling
 
-For functions whose descriptions refer to regular expressions, the decoder identifies which string parameter stores the matching pattern. It then classifies the requested pattern as:
+String role classification is model-driven rather than based on a hard-coded source/input/text argument-name rule. The four roles are `source`, `regex`, `replacement`, and `ordinary`. Source selection uses a semantic Trie choice; quoted source spans are used as bounded candidates when the request provides them, while unquoted requests use contiguous token spans. Regex selection additionally classifies regex kind:
 
 - `characters` for a set of individual characters;
 - `exact` for one literal word or text value;
 - `general` for repeated categories or other regular-expression structures.
 
-The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. Alternative expressions cannot stop after a trailing `|`, and it also removes an unnecessary trailing `.*` when a shorter completed pattern is sufficient.
+The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. Alternative expressions cannot stop after a trailing `|`. Generated regex and replacement values are not shape-transformed after generation.
 
-Replacement parameters are identified separately, but the generated replacement text is not rewritten after generation. The value returned by the model is preserved as-is. The prompt may describe the intended replacement semantics, but it does not act as a post-processing dictionary.
+Replacement values use the normal string generator and are not rewritten after generation.
 
 ### Final validation
 
@@ -298,7 +298,7 @@ Structural correctness and semantic accuracy are separate:
 - Structural correctness is deterministic within the supported grammar: the decoder restricts function names, JSON structure, parameter names, and primitive types.
 - Semantic accuracy is probabilistic: the 0.6B model may still choose the wrong function or infer an unintended value.
 
-Function descriptions, the compiler prompt, regex-role classification, and replacement refinement improve semantic results but do not make them mathematically guaranteed.
+Function descriptions, argument names, the role-classification prompt, and the compiler prompt can influence semantic results. The role classifier is cached per function schema, argument, and request.
 
 ### Reliability
 
@@ -326,11 +326,11 @@ Quotes and backslashes can make an otherwise correct model value invalid JSON. T
 
 ### Regex completion
 
-The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, and explicit alternative-boundary handling constrain generation, but the generated value is not rewritten after the fact. Source extraction offers tokenizer-derived contiguous spans to a semantic selection prompt, so the source boundary does not depend on quotation marks.
+The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, and explicit alternative-boundary handling constrain generation, but the generated value is not rewritten after the fact. Source extraction similarly prefers tokenizer-validated quoted spans so trailing instruction text is not copied into the source argument.
 
 ### Replacement values
 
-Replacement-role detection remains, but generated replacement values are preserved without shape-changing post-processing.
+Replacement is one of the four AI-classified string roles. Generated replacement values are preserved without shape-changing post-processing.
 
 ### Five-minute execution target
 
@@ -352,15 +352,13 @@ The current tests cover:
 - negative integers, incomplete numeric prefixes, and decimal rejection;
 - both boolean literals;
 - empty strings, quote escaping, and backslash escaping;
-- regex-argument, replacement-argument, and regex-kind classification;
-- replacement values preserved without shape-changing post-processing;
-- semantic source-span selection and regex alternative completion;
+- four-way string role classification and dedicated dispatch;
 - valid and invalid function/prompt file loading;
 - progress reporting, result order, and all-or-nothing saving;
 - normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
 - creation and contents of the final JSON result array.
 
-There are 42 deterministic unit tests in the current suite.
+There are 33 deterministic unit tests in the current suite. Redundant legacy-helper checks and duplicate-shaped prefix/error cases have been removed or consolidated; the remaining tests protect distinct user-visible or boundary-level behavior.
 
 Run all unit tests:
 
@@ -442,4 +440,4 @@ AI assistance was used for:
 - analyzing performance trade-offs between per-token logits calls and validated fixed-literal output;
 - reorganizing modules and drafting documentation.
 
-All suggested changes were reviewed against the project requirements, checked with local tests and static analysis, and exercised with the real model where semantic behavior or performance required verification. The supplied SDK was not modified by AI or by the application changes.
+

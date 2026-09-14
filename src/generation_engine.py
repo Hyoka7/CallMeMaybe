@@ -66,12 +66,17 @@ class ConstrainedDecoder(ValueGeneration):
             if value_type == "string":
                 self.emit_literal(structure_prompt, output, " ")
                 self.emit_literal(structure_prompt, output, '"')
-                regex_kind = None
-                if self.is_regex_argument(function, name):
-                    regex_kind = self.regex_kind(function, name, user_input)
-                if self.is_source_argument(name) and regex_kind is None:
-                    value = self.generate_source(structure_prompt, user_input)
+                role = self.string_role(function, name, user_input)
+                if role == "source":
+                    value = self.generate_source(
+                        structure_prompt, user_input
+                    )
                 else:
+                    regex_kind = None
+                    if role == "regex":
+                        regex_kind = self.regex_kind(
+                            function, name, user_input
+                        )
                     value = self.generate_string(
                         structure_prompt, regex_kind, user_input
                     )

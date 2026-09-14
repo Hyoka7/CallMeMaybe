@@ -124,35 +124,24 @@ class MainTests(unittest.TestCase):
             ["fn_first", "fn_second"],
         )
 
-    def test_keyboard_interrupt_returns_130(self) -> None:
-        stderr = io.StringIO()
-
-        with patch("src.main.run", side_effect=KeyboardInterrupt), patch(
-            "sys.stderr", stderr
-        ):
-            self.assertEqual(main(), 130)
-
-        self.assertEqual(stderr.getvalue(), "\nAborted by user.\n")
-
-    def test_memory_error_returns_failure(self) -> None:
-        stderr = io.StringIO()
-
-        with patch("src.main.run", side_effect=MemoryError), patch(
-            "sys.stderr", stderr
-        ):
-            self.assertEqual(main(), 1)
-
-        self.assertEqual(stderr.getvalue(), "Aborting: insufficient memory.\n")
-
-    def test_decoder_error_returns_failure(self) -> None:
-        stderr = io.StringIO()
-
-        with patch("src.main.run", side_effect=DecoderError("broken")), patch(
-            "sys.stderr", stderr
-        ):
-            self.assertEqual(main(), 1)
-
-        self.assertEqual(stderr.getvalue(), "Aborting: broken\n")
+    def test_known_failures_return_expected_status_and_message(self) -> None:
+        cases: list[tuple[BaseException, int, str]] = [
+            (KeyboardInterrupt(), 130, "\nAborted by user.\n"),
+            (
+                MemoryError(),
+                1,
+                "Aborting: insufficient memory.\n",
+            ),
+            (DecoderError("broken"), 1, "Aborting: broken\n"),
+        ]
+        for exception, expected_status, expected_stderr in cases:
+            with self.subTest(exception=type(exception).__name__):
+                stderr = io.StringIO()
+                with patch("src.main.run", side_effect=exception), patch(
+                    "sys.stderr", stderr
+                ):
+                    self.assertEqual(main(), expected_status)
+                self.assertEqual(stderr.getvalue(), expected_stderr)
 
     def test_unexpected_exception_is_not_swallowed(self) -> None:
         with (

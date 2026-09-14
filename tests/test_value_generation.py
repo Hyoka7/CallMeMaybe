@@ -64,14 +64,6 @@ class NumberGenerationTests(unittest.TestCase):
             decoder.generate_number([], "}", integer=True), [1, 2]
         )
 
-    def test_minus_prefix_cannot_terminate(self) -> None:
-        decoder = numeric_decoder([
-            {1: 10},
-            {0: 10, 2: 9},
-            {0: 10},
-        ])
-        self.assertEqual(decoder.generate_number([], "}"), [1, 2])
-
     def test_number_accepts_leading_space_in_negative_token(self) -> None:
         decoder = ConstrainedDecoder.model_construct(
             model=ScriptedLogitsModel([
@@ -92,23 +84,33 @@ class NumberGenerationTests(unittest.TestCase):
         )
         self.assertEqual(decoder.generate_number([], "}"), [7, 2])
 
-    def test_fraction_prefix_cannot_terminate(self) -> None:
-        decoder = numeric_decoder([
-            {2: 10},
-            {3: 10},
-            {0: 10, 4: 9},
-            {0: 10},
-        ])
-        self.assertEqual(decoder.generate_number([], "}"), [2, 3, 4])
-
-    def test_exponent_prefix_cannot_terminate(self) -> None:
-        decoder = numeric_decoder([
-            {2: 10},
-            {5: 10},
-            {0: 10, 6: 9},
-            {0: 10},
-        ])
-        self.assertEqual(decoder.generate_number([], "}"), [2, 5, 6])
+    def test_incomplete_fraction_or_exponent_cannot_terminate(self) -> None:
+        cases: tuple[
+            tuple[str, list[dict[int, float]], list[int]],
+            ...,
+        ] = (
+            (
+                "minus",
+                [{1: 10}, {0: 10, 2: 9}, {0: 10}],
+                [1, 2],
+            ),
+            (
+                "fraction",
+                [{2: 10}, {3: 10}, {0: 10, 4: 9}, {0: 10}],
+                [2, 3, 4],
+            ),
+            (
+                "exponent",
+                [{2: 10}, {5: 10}, {0: 10, 6: 9}, {0: 10}],
+                [2, 5, 6],
+            ),
+        )
+        for name, scores, expected in cases:
+            with self.subTest(name=name):
+                decoder = numeric_decoder(scores)
+                self.assertEqual(
+                    decoder.generate_number([], "}"), expected
+                )
 
 
 class BooleanModel:

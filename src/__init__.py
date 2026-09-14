@@ -1,1 +1,1 @@
-"""Function-calling application package."""
+"""CallMeMaybe application package."""
