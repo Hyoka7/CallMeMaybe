@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
-    from src.token_generation import TokenGeneration
     from src.value_handlers import ValueHandler, ValueHandlerRegistry
 
 END = -1
@@ -51,57 +50,24 @@ class LiteralState(BaseModel):
         )
 
 
-class FunctionNameState(BaseModel):
-    """Token-trie state for selecting one function name."""
-
-    model_config = ConfigDict(frozen=True)
-
-    choices: tuple[str, ...]
-
-    def build(self, decoder: TokenGeneration) -> TrieNode:
-        """Build a token trie containing every available function name."""
-        root = TrieNode()
-        for choice in self.choices:
-            root.insert(decoder.model.encode(choice)[0].tolist(), choice)
-        return root
-
-
-class ParameterKeyState(BaseModel):
-    """State describing the next schema parameter key to emit."""
+class ParameterState(BaseModel):
+    """State for one parameter's key, type validation and separator."""
 
     model_config = ConfigDict(frozen=True)
 
     name: str
-
-    @property
-    def literal(self) -> str:
-        """Return the JSON-encoded key and colon.
-
-        The value-leading whitespace is emitted by the value generator. This
-        preserves tokenizer-native space-prefixed number tokens.
-        """
-        return json.dumps(self.name, ensure_ascii=False) + ":"
-
-
-class ParameterSeparatorState(BaseModel):
-    """State selecting the only valid separator after a parameter value."""
-
-    model_config = ConfigDict(frozen=True)
-
+    type_name: str
     is_last: bool
 
     @property
-    def literal(self) -> str:
+    def key_literal(self) -> str:
+        """Return the JSON-encoded key and colon."""
+        return json.dumps(self.name, ensure_ascii=False) + ":"
+
+    @property
+    def separator_literal(self) -> str:
         """Return an object close or comma for the current position."""
         return "}" if self.is_last else ","
-
-
-class ParameterValueState(BaseModel):
-    """Dispatch state for one schema-declared parameter value type."""
-
-    model_config = ConfigDict(frozen=True)
-
-    type_name: str
 
     def handler(self, registry: ValueHandlerRegistry) -> ValueHandler:
         """Resolve the registered generator for this value type."""

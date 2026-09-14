@@ -1,7 +1,8 @@
 """Schema value-handler interface, registry and built-in adapters."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+import json
+from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, PrivateAttr
 
@@ -19,11 +20,13 @@ class ValueHandler(Protocol):
         self,
         decoder: ConstrainedDecoder,
         prompt: list[int],
+        output: list[int],
         user_input: str,
         parameter_name: str,
         function: JsonFunction,
-    ) -> Any:
-        """Generate one JSON value and append its token IDs to prompt."""
+        is_last: bool,
+    ) -> None:
+        """Generate one value and append tokens to prompt and output."""
 
 
 class ValueHandlerRegistry(BaseModel):
@@ -64,14 +67,29 @@ class StringHandler(BaseModel):
         self,
         decoder: ConstrainedDecoder,
         prompt: list[int],
+        output: list[int],
         user_input: str,
         parameter_name: str,
         function: JsonFunction,
-    ) -> Any:
-        """Generate an ordinary string through the shared generator."""
-        del parameter_name, function
-        decoder.append_tokens(prompt, [], '"')
-        return decoder.generate_string(prompt, None, user_input)
+        is_last: bool,
+    ) -> None:
+        """Generate a string and append its JSON representation."""
+        del is_last
+        decoder.emit_literal(prompt, output, " ")
+        decoder.emit_literal(prompt, output, '"')
+        role = decoder.string_role(function, parameter_name, user_input)
+        regex_kind = None
+        if role == "source":
+            value = decoder.generate_source(prompt, user_input)
+        else:
+            if role == "regex":
+                regex_kind = decoder.regex_kind(
+                    function, parameter_name, user_input
+                )
+            value = decoder.generate_string(prompt, regex_kind, user_input)
+        escaped = json.dumps(value, ensure_ascii=False)[1:-1]
+        output.extend(decoder.model.encode(escaped)[0].tolist())
+        output.append(decoder.vocabulary.quote)
 
 
 class NumberHandler(BaseModel):
@@ -81,13 +99,16 @@ class NumberHandler(BaseModel):
         self,
         decoder: ConstrainedDecoder,
         prompt: list[int],
+        output: list[int],
         user_input: str,
         parameter_name: str,
         function: JsonFunction,
-    ) -> Any:
+        is_last: bool,
+    ) -> None:
         """Generate a JSON number value."""
         del user_input, parameter_name, function
-        return decoder.generate_number(prompt, "}")
+        end_text = "}" if is_last else ","
+        output.extend(decoder.generate_number(prompt, end_text))
 
 
 class IntegerHandler(BaseModel):
@@ -97,13 +118,18 @@ class IntegerHandler(BaseModel):
         self,
         decoder: ConstrainedDecoder,
         prompt: list[int],
+        output: list[int],
         user_input: str,
         parameter_name: str,
         function: JsonFunction,
-    ) -> Any:
+        is_last: bool,
+    ) -> None:
         """Generate a JSON integer value."""
         del user_input, parameter_name, function
-        return decoder.generate_number(prompt, "}", integer=True)
+        end_text = "}" if is_last else ","
+        output.extend(
+            decoder.generate_number(prompt, end_text, integer=True)
+        )
 
 
 class BooleanHandler(BaseModel):
@@ -113,10 +139,12 @@ class BooleanHandler(BaseModel):
         self,
         decoder: ConstrainedDecoder,
         prompt: list[int],
+        output: list[int],
         user_input: str,
         parameter_name: str,
         function: JsonFunction,
-    ) -> Any:
+        is_last: bool,
+    ) -> None:
         """Generate a JSON boolean value."""
-        del user_input, parameter_name, function
-        return decoder.generate_boolean(prompt)
+        del user_input, parameter_name, function, is_last
+        output.extend(decoder.generate_boolean(prompt))

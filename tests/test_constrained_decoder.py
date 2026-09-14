@@ -99,11 +99,21 @@ class TrieNodeTests(unittest.TestCase):
                 self,
                 decoder: ConstrainedDecoder,
                 prompt: list[int],
+                output: list[int],
                 user_input: str,
                 parameter_name: str,
                 function: JsonFunction,
-            ) -> str:
-                return "2026-09-04"
+                is_last: bool,
+            ) -> None:
+                del (
+                    decoder,
+                    prompt,
+                    output,
+                    user_input,
+                    parameter_name,
+                    function,
+                    is_last,
+                )
 
         decoder.register_value_handler("date", DateHandler())
         self.assertIsNotNone(decoder.value_handlers().get("date"))

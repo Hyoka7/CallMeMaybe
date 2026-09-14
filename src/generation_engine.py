@@ -9,9 +9,7 @@ from pydantic import PrivateAttr
 from src.decoder_errors import DecoderError
 from src.model import JsonFunction
 from src.states import (
-    ParameterKeyState,
-    ParameterSeparatorState,
-    ParameterValueState,
+    ParameterState,
 )
 from src.value_generation import ValueGeneration
 from src.value_handlers import (
@@ -56,51 +54,25 @@ class ConstrainedDecoder(ValueGeneration):
         for index, (name, definition) in enumerate(
             function.parameters.items()
         ):
-            key_state = ParameterKeyState(name=name)
-            self.emit_literal(
-                structure_prompt, output, key_state.literal
-            )
-            value_type = definition["type"]
-            value_state = ParameterValueState(type_name=value_type)
-            value_state.handler(self.value_handlers())
-            if value_type == "string":
-                self.emit_literal(structure_prompt, output, " ")
-                self.emit_literal(structure_prompt, output, '"')
-                role = self.string_role(function, name, user_input)
-                if role == "source":
-                    value = self.generate_source(
-                        structure_prompt, user_input
-                    )
-                else:
-                    regex_kind = None
-                    if role == "regex":
-                        regex_kind = self.regex_kind(
-                            function, name, user_input
-                        )
-                    value = self.generate_string(
-                        structure_prompt, regex_kind, user_input
-                    )
-                escaped = json.dumps(value, ensure_ascii=False)[1:-1]
-                output.extend(self.model.encode(escaped)[0].tolist())
-                output.append(self.vocabulary.quote)
-            elif value_type in {"number", "integer"}:
-                end_text = (
-                    "}" if index + 1 == len(function.parameters) else ","
-                )
-                output.extend(
-                    self.generate_number(
-                        structure_prompt,
-                        end_text,
-                        integer=value_type == "integer",
-                    )
-                )
-            elif value_type == "boolean":
-                output.extend(self.generate_boolean(structure_prompt))
-            separator = ParameterSeparatorState(
-                is_last=index + 1 == len(function.parameters)
+            parameter_state = ParameterState(
+                name=name,
+                type_name=definition["type"],
+                is_last=index + 1 == len(function.parameters),
             )
             self.emit_literal(
-                structure_prompt, output, separator.literal
+                structure_prompt, output, parameter_state.key_literal
+            )
+            parameter_state.handler(self.value_handlers()).generate(
+                self,
+                structure_prompt,
+                output,
+                user_input,
+                name,
+                function,
+                parameter_state.is_last,
+            )
+            self.emit_literal(
+                structure_prompt, output, parameter_state.separator_literal
             )
         if not function.parameters:
             self.emit_literal(structure_prompt, output, "}")

@@ -77,6 +77,48 @@ class GenerationEngineTests(unittest.TestCase):
         self.assertEqual(selected, function)
         self.assertEqual(parameters, {"count": 7})
 
+    def test_generate_call_delegates_value_generation_to_handler(self) -> None:
+        function = JsonFunction(
+            name="fn_count",
+            description="Return a count",
+            parameters={"count": {"type": "integer"}},
+            returns={"type": "integer"},
+        )
+        decoder = ConstrainedDecoder.model_construct(
+            model=CharacterModel(), vocabulary=character_vocabulary()
+        )
+
+        class TrackingIntegerHandler:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, bool]] = []
+
+            def generate(
+                self,
+                decoder: ConstrainedDecoder,
+                prompt: list[int],
+                output: list[int],
+                user_input: str,
+                parameter_name: str,
+                function: JsonFunction,
+                is_last: bool,
+            ) -> None:
+                del user_input, function
+                self.calls.append((parameter_name, is_last))
+                token_ids = decoder.model.encode("7")[0].tolist()
+                prompt.extend(token_ids)
+                output.extend(token_ids)
+
+        handler = TrackingIntegerHandler()
+        decoder.register_value_handler("integer", handler)
+
+        selected, parameters = decoder.generate_call(
+            "compiler context", [function], "count seven"
+        )
+
+        self.assertEqual(selected, function)
+        self.assertEqual(parameters, {"count": 7})
+        self.assertEqual(handler.calls, [("count", True)])
+
 
 if __name__ == "__main__":
     unittest.main()

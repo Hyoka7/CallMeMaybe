@@ -222,7 +222,7 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 ### Typed value generation
 
-`ParameterValueState` validates each schema type through `ValueHandlerRegistry`. For the built-in JSON types, `generate_parameters()` then routes directly to the shared string, number, integer, and boolean generators; the registry remains the extension point for custom types.
+`ParameterState` resolves each schema type through `ValueHandlerRegistry`. `generate_parameters()` delegates value generation to the resolved handler, and each built-in handler calls the shared string, number, integer, or boolean generator. Custom types use the same handler-based path after registration.
 
 Before generating a string, the model classifies the parameter as `source`, `regex`, `replacement`, or `ordinary`, using the function purpose, all string argument names, the current argument name, and the request. The selected role dispatches to its dedicated path. String values use vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Replacement values use the normal string generator and are not rewritten after generation.
 
@@ -359,7 +359,7 @@ The current tests cover:
 - normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
 - creation and contents of the final JSON result array.
 
-There are 35 deterministic unit tests in the current suite. Redundant legacy-helper checks and duplicate-shaped prefix/error cases have been removed or consolidated; the remaining tests protect distinct user-visible or boundary-level behavior.
+There are 36 deterministic unit tests in the current suite. Redundant legacy-helper checks and duplicate-shaped prefix/error cases have been removed or consolidated; the remaining tests protect distinct user-visible or boundary-level behavior.
 
 Run all unit tests:
 

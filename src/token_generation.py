@@ -8,7 +8,6 @@ from llm_sdk import Small_LLM_Model
 from src.decoder_errors import DecoderError, NoValidTokenError
 from src.states import (
     END,
-    FunctionNameState,
     LiteralResult,
     LiteralState,
     TrieNode,
@@ -106,13 +105,9 @@ class TokenGeneration(BaseModel):
         function_names: list[str],
         output_ids: list[int],
     ) -> str:
-        """Generate a function name through its dedicated trie state."""
-        state = FunctionNameState(choices=tuple(function_names))
-        state.build(self)
+        """Generate a function name through the candidate token trie."""
         return self.choose_trie_token_ids(
-            prompt_ids,
-            list(state.choices),
-            output_ids,
+            prompt_ids, function_names, output_ids
         )
 
     def choose_trie_token_ids(
