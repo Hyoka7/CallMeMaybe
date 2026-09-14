@@ -41,11 +41,8 @@ class PromptConstructionTests(unittest.TestCase):
             "The word 'cat' means the exact pattern cat, not cat.",
             prompt,
         )
-        self.assertIn(
-            "asterisks means exactly one '*' and then the closing quote",
-            prompt,
-        )
-        self.assertIn("Never output '**'", prompt)
+        self.assertIn("asterisks should be emitted as '**'", prompt)
+        self.assertIn("the regex value is [aeiouAEIOU]", prompt)
 
 
 if __name__ == "__main__":
