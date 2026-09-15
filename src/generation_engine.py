@@ -35,7 +35,7 @@ class ConstrainedDecoder(ValueGeneration):
         self.value_handlers().register(type_name, handler)
 
     def value_handlers(self) -> ValueHandlerRegistry:
-        """Support lightweight model_construct() instances used by tests."""
+        """Support lightweight instances created with model_construct()."""
         try:
             return self._value_handlers
         except AttributeError:

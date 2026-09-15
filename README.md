@@ -83,12 +83,11 @@ During generation, `tqdm` displays the number of completed prompts, elapsed time
 
 ```bash
 make lint
-make test
 make debug
 make clean
 ```
 
-`make test` runs the complete unittest suite in verbose mode. `make lint` runs both flake8 and mypy.
+`make lint` runs both flake8 and mypy.
 
 ## Input and Output
 
@@ -336,50 +335,13 @@ Replacement is one of the four AI-classified string roles. Candidate selection e
 
 Obtaining logits for every fixed JSON token made generation too slow because the SDK recomputes the growing context. Restoring the validated literal fast path reduced the standard batch to approximately two and a half minutes without modifying the SDK.
 
-## Testing Strategy
-
-The test suite uses Python's `unittest` module and deterministic model doubles. This keeps token-level cases reproducible and avoids downloading or loading the real model during unit tests.
-
-The current tests cover:
-
-- Trie terminal and continuation behavior for shared function-name prefixes;
-- literal-state prefix acceptance, rejection, and completion;
-- vocabulary-based literal candidates;
-- the fixed-literal fast path avoiding logits calls;
-- custom value-handler registration and unknown-type errors;
-- complete-call JSON assembly and rejection of an empty function list;
-- number fractions, exponents, incomplete prefixes, and termination;
-- negative integers, incomplete numeric prefixes, and decimal rejection;
-- both boolean literals;
-- empty strings, quote escaping, and backslash escaping;
-- four-way string role classification and dedicated dispatch;
-- quoted-span boundaries for source extraction;
-- valid and invalid function/prompt file loading;
-- progress reporting, result order, and all-or-nothing saving;
-- normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
-- creation and contents of the final JSON result array.
-
-There are 37 deterministic unit tests in the current suite. Redundant legacy-helper checks and duplicate-shaped prefix/error cases have been removed or consolidated; the remaining tests protect distinct user-visible or boundary-level behavior.
-
-Run all unit tests:
-
-```bash
-make test
-```
-
-The equivalent direct command is:
-
-```bash
-uv run python -m unittest discover -s tests -v
-```
-
 Run static checks:
 
 ```bash
 make lint
 ```
 
-For end-to-end validation, run the default batch with the real model and parse `data/output/function_calling_results.json`. Unit tests validate deterministic contracts; the real-model run evaluates semantic accuracy and execution time.
+For validation, run the default batch with the real model and parse `data/output/function_calling_results.json`. The real-model run evaluates semantic accuracy and execution time.
 
 ## Repository Layout
 
@@ -410,7 +372,6 @@ For end-to-end validation, run the default batch with the real model and parse `
 │   ├── value_generation.py        # primitive JSON value grammars
 │   ├── value_handlers.py          # extensible type registry
 │   └── vocabulary.py              # tokenizer-derived token classes
-├── tests/
 ├── Makefile
 ├── pyproject.toml
 └── README.md
@@ -423,7 +384,6 @@ For end-to-end validation, run the default batch with the real model and parse `
 - The project brief: `en.subject.pdf`
 - [Python `json` documentation](https://docs.python.org/3/library/json.html)
 - [Python `re` documentation](https://docs.python.org/3/library/re.html)
-- [Python `unittest` documentation](https://docs.python.org/3/library/unittest.html)
 - [Pydantic documentation](https://docs.pydantic.dev/)
 - [NumPy documentation](https://numpy.org/doc/)
 - [tqdm documentation](https://tqdm.github.io/)
@@ -437,6 +397,5 @@ AI assistance was used for:
 
 - discussing the decoder architecture and separation of responsibilities;
 - identifying token-boundary, JSON escaping, number termination, regex, and replacement edge cases;
-- drafting and reviewing deterministic unit tests;
 - analyzing performance trade-offs between per-token logits calls and validated fixed-literal output;
 - reorganizing modules and drafting documentation.
