@@ -85,6 +85,14 @@ class NumberGenerationTests(unittest.TestCase):
         )
         self.assertEqual(decoder.generate_number([], "}"), [7, 2])
 
+    def test_number_does_not_use_a_logit_margin_to_end(self) -> None:
+        decoder = numeric_decoder([
+            {2: 10},
+            {0: 10, 4: 12},
+            {0: 10},
+        ])
+        self.assertEqual(decoder.generate_number([], "}"), [2, 4])
+
     def test_incomplete_fraction_or_exponent_cannot_terminate(self) -> None:
         cases: tuple[
             tuple[str, list[dict[int, float]], list[int]],

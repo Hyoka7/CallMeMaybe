@@ -15,7 +15,6 @@ from src.states import (
 )
 from src.value_generation import (
     NUMBER_COMPLETE,
-    NUMBER_END_MARGIN,
     NUMBER_PREFIX,
 )
 from src.value_handlers import ValueHandler, ValueHandlerRegistry
@@ -24,7 +23,6 @@ from src.vocabulary import Vocabulary
 __all__ = [
     "END",
     "NUMBER_COMPLETE",
-    "NUMBER_END_MARGIN",
     "NUMBER_PREFIX",
     "ConstrainedDecoder",
     "DecoderError",

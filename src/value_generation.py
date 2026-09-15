@@ -11,7 +11,6 @@ from src.decoder_errors import NoValidTokenError
 from src.regex_generation import RegexGeneration
 from src.states import END
 
-NUMBER_END_MARGIN = 3.0
 NUMBER_PREFIX = re.compile(
     r"-?(?:(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+-]?[0-9]*)?)?"
 )
@@ -255,17 +254,12 @@ class ValueGeneration(RegexGeneration):
                 not integer or re.fullmatch(r"-?(?:0|[1-9][0-9]*)", text)
             ):
                 candidates.add(END)
-                best_number = max(valid, key=logits.__getitem__)
-                if (
-                    logits[best_number] - logits[end_token]
-                    <= NUMBER_END_MARGIN
-                ):
-                    return output
             chosen = max(
                 candidates,
                 key=lambda token_id: (
                     logits[end_token] if token_id == END
-                    else logits[token_id]
+                    else logits[token_id],
+                    token_id == END,
                 ),
             )
             if chosen == END:

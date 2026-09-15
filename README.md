@@ -359,7 +359,7 @@ The current tests cover:
 - normal, interrupted, memory-error, expected-decoder-error, and unexpected-error exit behavior;
 - creation and contents of the final JSON result array.
 
-There are 36 deterministic unit tests in the current suite. Redundant legacy-helper checks and duplicate-shaped prefix/error cases have been removed or consolidated; the remaining tests protect distinct user-visible or boundary-level behavior.
+There are 37 deterministic unit tests in the current suite. Redundant legacy-helper checks and duplicate-shaped prefix/error cases have been removed or consolidated; the remaining tests protect distinct user-visible or boundary-level behavior.
 
 Run all unit tests:
 
