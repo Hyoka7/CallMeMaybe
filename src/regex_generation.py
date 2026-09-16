@@ -1,4 +1,4 @@
-"""Regex argument interpretation and pattern completion rules."""
+"""Regex argument interpretation and role classification."""
 from __future__ import annotations
 
 import re
@@ -113,24 +113,38 @@ class RegexGeneration(TokenGeneration):
         )
 
     @staticmethod
-    def _regex_complete(pattern: str) -> bool:
-        """Return whether a minimal reusable regex has reached a safe end."""
-        if not pattern or pattern.endswith(("\\", "|", "(", "[", "{")):
+    def regex_token_allowed(
+        content: str,
+        token_text: str,
+        regex_kind: str,
+        closing: bool = False,
+    ) -> bool:
+        proposed = content + token_text
+        if regex_kind == "characters":
+            if closing and "]" not in proposed:
+                return False
+            if proposed.count("[") > 1:
+                return False
+            if "]" not in proposed:
+                return True
+            return proposed.endswith("]")
+        if regex_kind == "general":
+            if closing:
+                if RegexGeneration.regex_can_close(content):
+                    return not token_text
+                return RegexGeneration.regex_can_close(proposed)
+            return not RegexGeneration.regex_can_close(content)
+        return True
+
+    @staticmethod
+    def regex_can_close(pattern: str) -> bool:
+        """Return whether a structural regex can be closed now."""
+        if not any(char in pattern for char in "[](){}+*?|\\.^$"):
+            return False
+        if pattern.endswith(("\\", "|", "(", "[", "{")):
             return False
         try:
             re.compile(pattern)
         except re.error:
             return False
-        if not any(character in pattern for character in "[](){}+*?|\\.^$"):
-            return True
-        return not pattern.endswith(("\\", "|", "(", "[", "{"))
-
-    @classmethod
-    def _completed_regex_prefix(cls, pattern: str) -> str | None:
-        """Find a completed structural regex inside a multi-text token."""
-        for length in range(1, len(pattern) + 1):
-            prefix = pattern[:length]
-            structural = any(char in prefix for char in "[](){}+*?\\.^$")
-            if structural and cls._regex_complete(prefix):
-                return prefix
-        return None
+        return True

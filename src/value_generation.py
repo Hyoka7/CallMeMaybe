@@ -97,6 +97,37 @@ class ValueGeneration(RegexGeneration):
                 content, user_input
             ):
                 mask |= close_mask
+            if regex_kind is not None:
+                for token_id in np.flatnonzero(mask):
+                    prefix = self.vocabulary.close_prefix[token_id]
+                    token_text = (
+                        prefix
+                        if prefix is not None
+                        else self.vocabulary.strs[token_id]
+                    )
+                    if regex_kind == "exact":
+                        proposed = content + token_text
+                        candidates = self.extract_literal_candidates(
+                            user_input
+                        )
+                        allowed = (
+                            any(value == proposed for value in candidates)
+                            if prefix is not None
+                            else self.literal_prefix(proposed, user_input)
+                        )
+                    else:
+                        allowed = self.regex_token_allowed(
+                            content,
+                            token_text,
+                            regex_kind,
+                            closing=prefix is not None,
+                        )
+                    if not allowed:
+                        mask[token_id] = False
+            if not mask.any():
+                raise NoValidTokenError(
+                    "No token can continue the requested string"
+                )
             chosen = int(np.argmax(np.where(mask, logits, -np.inf)))
             prefix = self.vocabulary.close_prefix[chosen]
             if prefix is not None:
@@ -117,23 +148,9 @@ class ValueGeneration(RegexGeneration):
                     content = proposed_close
                     continue
                 content = proposed_close
-                if regex_kind == "characters" and not content.endswith("]"):
-                    content += "]"
-                    prompt.extend(self.model.encode("]")[0].tolist())
                 prompt.append(self.vocabulary.quote)
                 return content
             proposed = content + self.vocabulary.strs[chosen]
-            complete: str | None = None
-            if regex_kind == "exact":
-                match = re.search(r"[\[\](){}+*?\\.^$|]", proposed)
-                complete = proposed[:match.start()] if match else proposed
-            elif regex_kind in {"characters", "general"}:
-                complete = self._completed_regex_prefix(proposed)
-            if complete is not None:
-                suffix = complete[len(content):]
-                prompt.extend(self.model.encode(suffix)[0].tolist())
-                prompt.append(self.vocabulary.quote)
-                return complete
             fragment = self.vocabulary.strs[chosen]
             self.append_string_fragment(prompt, fragment, chosen)
             content = proposed
