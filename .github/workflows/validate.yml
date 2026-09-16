@@ -1,0 +1,91 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HF_HOME: ${{ runner.temp }}/huggingface
+      TOKENIZERS_PARALLELISM: "false"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: latest
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: uv
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run lint
+        run: make lint
+
+      - name: Check command-line interface
+        run: uv run python -m src --help
+
+      - name: Generate the default batch
+        run: timeout --signal=TERM 5m uv run python -m src
+
+      - name: Validate generated JSON and schema
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          input_path = Path("data/input/function_calling_tests.json")
+          functions_path = Path("data/input/functions_definition.json")
+          output_path = Path("data/output/function_calling_results.json")
+
+          with input_path.open(encoding="utf-8") as file:
+              prompts = json.load(file)
+          with functions_path.open(encoding="utf-8") as file:
+              functions = json.load(file)
+          with output_path.open(encoding="utf-8") as file:
+              results = json.load(file)
+
+          assert isinstance(results, list)
+          assert len(results) == len(prompts)
+          definitions = {item["name"]: item for item in functions}
+
+          for prompt, result in zip(prompts, results):
+              assert set(result) == {"prompt", "name", "parameters"}
+              assert result["prompt"] == prompt["prompt"]
+              assert result["name"] in definitions
+
+              schema = definitions[result["name"]]["parameters"]
+              parameters = result["parameters"]
+              assert set(parameters) == set(schema)
+              for name, definition in schema.items():
+                  value = parameters[name]
+                  type_name = definition["type"]
+                  if type_name == "string":
+                      assert isinstance(value, str)
+                  elif type_name == "boolean":
+                      assert isinstance(value, bool)
+                  elif type_name == "integer":
+                      assert isinstance(value, int) and not isinstance(value, bool)
+                  elif type_name == "number":
+                      assert isinstance(value, (int, float)) and not isinstance(value, bool)
+                  else:
+                      raise AssertionError(f"Unsupported schema type: {type_name}")
+
+          print(f"Validated {len(results)} generated function calls.")
+          PY

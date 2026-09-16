@@ -54,6 +54,12 @@ def main() -> int:
     except (ValueError, OSError, DecoderError) as err:
         print(f"Aborting: {err}", file=sys.stderr)
         return 1
+    except Exception as err:  # noqa: BLE001
+        print(
+            f"Aborting: unexpected error ({type(err).__name__}): {err}",
+            file=sys.stderr,
+        )
+        return 1
 
 
 if __name__ == "__main__":

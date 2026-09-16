@@ -278,9 +278,9 @@ The application uses only the SDK's public model construction, encode, decode, t
 
 Calling the model for every brace, key, and separator caused the standard batch to exceed practical limits. Deterministic fragments therefore use a tokenizer path that is fully checked against the literal state before being appended. Model logits remain responsible for function and value decisions.
 
-### Expose expected errors, preserve unexpected failures
+### Report failures clearly
 
-The command layer converts `ValueError`, `OSError`, and `DecoderError` into readable messages and exit status `1`. `KeyboardInterrupt` returns `130`, and `MemoryError` returns `1` with a focused message. Unexpected programming errors are not swallowed by a broad `except Exception`; they retain their traceback.
+The command layer converts `ValueError`, `OSError`, and `DecoderError` into readable messages and exit status `1`. `KeyboardInterrupt` returns `130`, and `MemoryError` returns `1` with a focused message. Other exceptions are caught at the CLI boundary and reported with their exception type and message so the program does not terminate with an unhandled traceback.
 
 ## Performance Analysis
 
@@ -342,6 +342,12 @@ make lint
 ```
 
 For validation, run the default batch with the real model and parse `data/output/function_calling_results.json`. The real-model run evaluates semantic accuracy and execution time.
+
+## Testing Strategy
+
+Automated validation is intentionally maintained in GitHub Actions rather than in repository test files. The workflow runs `uv sync --dev`, the required flake8 and mypy checks, a command-line smoke check, and the default Qwen/Qwen3-0.6B batch.
+
+The generated file is then validated as JSON and checked against the input definitions. The validation confirms the prompt count, the exact output keys, the selected function name, the exact parameter names, and the JSON type of every generated value. The generation step has a five-minute timeout. Semantic accuracy is evaluated from the generated calls against the prompts when reviewing a workflow run; structural validity is checked automatically.
 
 ## Repository Layout
 
