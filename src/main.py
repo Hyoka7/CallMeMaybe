@@ -50,7 +50,7 @@ def main() -> int:
     except MemoryError:
         print("Aborting: insufficient memory.", file=sys.stderr)
         return 1
-    except (ValueError, OSError, RuntimeError) as err:
+    except (TypeError, ValueError, OSError, RuntimeError) as err:
         print(f"Aborting: {err}", file=sys.stderr)
         return 1
     except Exception as err:  # noqa: BLE001

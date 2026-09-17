@@ -279,7 +279,7 @@ Calling the model for every brace, key, and separator caused the standard batch 
 
 ### Report failures clearly
 
-The command layer converts `ValueError`, `OSError`, and `RuntimeError` into readable messages and exit status `1`. `KeyboardInterrupt` returns `130`, and `MemoryError` returns `1` with a focused message. Other exceptions are caught at the CLI boundary and reported with their exception type and message so the program does not terminate with an unhandled traceback.
+The command layer converts `TypeError`, `ValueError`, `OSError`, and `RuntimeError` into readable messages and exit status `1`. `KeyboardInterrupt` returns `130`, and `MemoryError` returns `1` with a focused message. Other exceptions are caught at the CLI boundary and reported with their exception type and message so the program does not terminate with an unhandled traceback.
 
 ## Performance Analysis
 

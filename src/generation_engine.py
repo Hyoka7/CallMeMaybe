@@ -104,7 +104,7 @@ class ConstrainedDecoder(ValueGeneration):
         call = json.loads(self.model.decode(output))
         parameters = call.get("parameters")
         if not isinstance(parameters, dict):
-            raise RuntimeError("Generated parameters are not an object")
+            raise TypeError("Generated parameters are not an object")
         if set(parameters) != set(selected.parameters):
             raise RuntimeError("Generated arguments do not match schema")
         return selected, parameters

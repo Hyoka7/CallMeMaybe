@@ -34,7 +34,7 @@ class Vocabulary(BaseModel):
             data = json.load(file)
         raw_vocab = data.get("model", {}).get("vocab")
         if not isinstance(raw_vocab, dict):
-            raise RuntimeError("Tokenizer file has no model.vocab mapping")
+            raise TypeError("Tokenizer file has no model.vocab mapping")
         token_ids = [
             token_id for token_id in raw_vocab.values()
             if isinstance(token_id, int)
