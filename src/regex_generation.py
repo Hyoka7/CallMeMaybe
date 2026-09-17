@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 
 from pydantic import PrivateAttr
 
@@ -144,7 +145,15 @@ class RegexGeneration(TokenGeneration):
         if pattern.endswith(("\\", "|", "(", "[", "{")):
             return False
         try:
-            re.compile(pattern)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=(
+                        r"Possible (nested set|set difference) at position"
+                    ),
+                    category=FutureWarning,
+                )
+                re.compile(pattern)
         except re.error:
             return False
         return True

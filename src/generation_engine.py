@@ -6,7 +6,6 @@ from typing import Any
 
 from pydantic import PrivateAttr
 
-from src.decoder_errors import DecoderError
 from src.model import JsonFunction
 from src.states import (
     ParameterState,
@@ -105,7 +104,7 @@ class ConstrainedDecoder(ValueGeneration):
         call = json.loads(self.model.decode(output))
         parameters = call.get("parameters")
         if not isinstance(parameters, dict):
-            raise DecoderError("Generated parameters are not an object")
+            raise RuntimeError("Generated parameters are not an object")
         if set(parameters) != set(selected.parameters):
-            raise DecoderError("Generated arguments do not match schema")
+            raise RuntimeError("Generated arguments do not match schema")
         return selected, parameters

@@ -7,7 +7,6 @@ from typing import cast
 
 import numpy as np
 
-from src.decoder_errors import NoValidTokenError
 from src.regex_generation import RegexGeneration
 from src.states import END
 
@@ -125,7 +124,7 @@ class ValueGeneration(RegexGeneration):
                     if not allowed:
                         mask[token_id] = False
             if not mask.any():
-                raise NoValidTokenError(
+                raise RuntimeError(
                     "No token can continue the requested string"
                 )
             chosen = int(np.argmax(np.where(mask, logits, -np.inf)))
@@ -248,10 +247,18 @@ class ValueGeneration(RegexGeneration):
         end_token = self.model.encode(end_text)[0].tolist()[0]
         for _ in range(limit):
             logits = self.model.get_logits_from_input_ids(prompt)
+            base_mask = (
+                self.vocabulary.int_mask
+                if integer
+                else self.vocabulary.num_mask
+            )
+            mask = np.zeros(len(logits), dtype=bool)
+            copy_size = min(len(mask), len(base_mask))
+            mask[:copy_size] = base_mask[:copy_size]
             valid = {
-                token_id
-                for token_id, token_text
-                in self.vocabulary.number_tokens.items()
+                int(token_id)
+                for token_id in np.flatnonzero(mask)
+                for token_text in (self.vocabulary.strs[int(token_id)],)
                 if NUMBER_PREFIX.fullmatch(
                     text + (token_text.lstrip() if not text else token_text)
                 )
@@ -265,7 +272,7 @@ class ValueGeneration(RegexGeneration):
                 )
             }
             if not valid:
-                raise NoValidTokenError("No valid number token")
+                raise RuntimeError("No valid number token")
             candidates = set(valid)
             if NUMBER_COMPLETE.fullmatch(text) and (
                 not integer or re.fullmatch(r"-?(?:0|[1-9][0-9]*)", text)
@@ -283,9 +290,9 @@ class ValueGeneration(RegexGeneration):
                 return output
             output.append(chosen)
             prompt.append(chosen)
-            token_text = self.vocabulary.number_tokens[chosen]
+            token_text = self.vocabulary.strs[chosen]
             text += token_text.lstrip() if not text else token_text
-        raise NoValidTokenError("Number value did not terminate")
+        raise RuntimeError("Number value did not terminate")
 
     def generate_boolean(self, prompt: list[int]) -> list[int]:
         """Choose one JSON boolean literal from model logits."""

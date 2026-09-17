@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, PrivateAttr
 
-from src.decoder_errors import UnsupportedTypeError
 from src.model import JsonFunction
 
 if TYPE_CHECKING:
@@ -55,7 +54,7 @@ class ValueHandlerRegistry(BaseModel):
         try:
             return self._handlers[type_name]
         except KeyError as exc:
-            raise UnsupportedTypeError(
+            raise RuntimeError(
                 f"No value handler registered for type {type_name!r}"
             ) from exc
 

@@ -9,7 +9,6 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
 from llm_sdk import Small_LLM_Model
-from src.decoder_errors import DecoderError
 
 
 class Vocabulary(BaseModel):
@@ -19,11 +18,12 @@ class Vocabulary(BaseModel):
 
     strs: tuple[str, ...]
     str_mask: NDArray[np.bool_]
+    int_mask: NDArray[np.bool_]
+    num_mask: NDArray[np.bool_]
     lead_space: NDArray[np.bool_]
     close_mask: NDArray[np.bool_]
     close_prefix: tuple[str | None, ...]
     quote: int
-    number_tokens: dict[int, str]
     special_tokens: dict[int, str]
 
     @classmethod
@@ -34,7 +34,7 @@ class Vocabulary(BaseModel):
             data = json.load(file)
         raw_vocab = data.get("model", {}).get("vocab")
         if not isinstance(raw_vocab, dict):
-            raise DecoderError("Tokenizer file has no model.vocab mapping")
+            raise RuntimeError("Tokenizer file has no model.vocab mapping")
         token_ids = [
             token_id for token_id in raw_vocab.values()
             if isinstance(token_id, int)
@@ -46,10 +46,11 @@ class Vocabulary(BaseModel):
         vocab_size = max(token_ids) + 1
         strings = [""] * vocab_size
         string_mask = np.zeros(vocab_size, dtype=bool)
+        int_mask = np.zeros(vocab_size, dtype=bool)
+        num_mask = np.zeros(vocab_size, dtype=bool)
         lead_space = np.zeros(vocab_size, dtype=bool)
         close_mask = np.zeros(vocab_size, dtype=bool)
         close_prefix: list[str | None] = [None] * vocab_size
-        number_ids: dict[int, str] = {}
         special_ids: dict[int, str] = {}
         for token_id in raw_vocab.values():
             if not isinstance(token_id, int):
@@ -84,21 +85,31 @@ class Vocabulary(BaseModel):
             if number_text and all(
                 char in "-+.eE0123456789" for char in number_text
             ):
-                number_ids[token_id] = text
+                num_mask[token_id] = True
+            if number_text and all(
+                char in "-0123456789" for char in number_text
+            ):
+                int_mask[token_id] = True
         quote_ids = model.encode('"')[0].tolist()
         if len(quote_ids) != 1:
-            raise DecoderError("Closing quote must be one token")
-        if not string_mask.any() or not close_mask.any() or not number_ids:
-            raise DecoderError(
+            raise RuntimeError("Closing quote must be one token")
+        if (
+            not string_mask.any()
+            or not close_mask.any()
+            or not int_mask.any()
+            or not num_mask.any()
+        ):
+            raise RuntimeError(
                 "Could not derive token classes from vocabulary"
             )
         return cls(
             strs=tuple(strings),
             str_mask=string_mask,
+            int_mask=int_mask,
+            num_mask=num_mask,
             lead_space=lead_space,
             close_mask=close_mask,
             close_prefix=tuple(close_prefix),
             quote=quote_ids[0],
-            number_tokens=number_ids,
             special_tokens=special_ids,
         )

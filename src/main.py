@@ -5,7 +5,6 @@ from tqdm import tqdm
 from llm_sdk import Small_LLM_Model
 from src.cli import parse_args
 from src.constrained_decoder import ConstrainedDecoder, Vocabulary
-from src.decoder_errors import DecoderError
 from src.json_to_file import write_results
 from src.loader import load_functions, load_prompts
 from src.model import JsonResult
@@ -51,7 +50,7 @@ def main() -> int:
     except MemoryError:
         print("Aborting: insufficient memory.", file=sys.stderr)
         return 1
-    except (ValueError, OSError, DecoderError) as err:
+    except (ValueError, OSError, RuntimeError) as err:
         print(f"Aborting: {err}", file=sys.stderr)
         return 1
     except Exception as err:  # noqa: BLE001

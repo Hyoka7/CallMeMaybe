@@ -225,7 +225,7 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 Before generating a string, the model classifies the parameter as `source`, `regex`, `replacement`, or `ordinary`, using the function purpose, all string argument names, the current argument name, and the request. The selected role dispatches to its dedicated path. String values use vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Replacement values use the normal string generator and are not rewritten after generation.
 
-Number generation maintains the text produced so far. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the same mechanism with an additional integer-only expression, excluding decimal points and exponents.
+Number generation maintains the text produced so far. Vocabulary construction provides separate `num_mask` and `int_mask` arrays, so candidate tokens are first restricted to numeric or integer characters before grammar checks run. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the integer mask and an additional integer-only expression, excluding decimal points and exponents.
 
 Boolean generation limits the choice to the token sequences for `true` and `false`.
 
@@ -266,7 +266,6 @@ The decoder is divided into focused modules:
 | `value_handlers.py` | Type-handler protocol and registry |
 | `value_generation.py` | String, number, integer, and boolean grammars |
 | `regex_generation.py` | Regex argument roles, intent, and completion |
-| `decoder_errors.py` | Expected constrained-decoding failures |
 
 `constrained_decoder.py` and `decoder_core.py` preserve stable import paths while the implementation remains split by responsibility.
 
@@ -280,7 +279,7 @@ Calling the model for every brace, key, and separator caused the standard batch 
 
 ### Report failures clearly
 
-The command layer converts `ValueError`, `OSError`, and `DecoderError` into readable messages and exit status `1`. `KeyboardInterrupt` returns `130`, and `MemoryError` returns `1` with a focused message. Other exceptions are caught at the CLI boundary and reported with their exception type and message so the program does not terminate with an unhandled traceback.
+The command layer converts `ValueError`, `OSError`, and `RuntimeError` into readable messages and exit status `1`. `KeyboardInterrupt` returns `130`, and `MemoryError` returns `1` with a focused message. Other exceptions are caught at the CLI boundary and reported with their exception type and message so the program does not terminate with an unhandled traceback.
 
 ## Performance Analysis
 
@@ -365,7 +364,6 @@ The generated file is then validated as JSON and checked against the input defin
 │   ├── cli.py                     # command-line paths
 │   ├── constrained_decoder.py     # public compatibility exports
 │   ├── decoder_core.py            # internal compatibility exports
-│   ├── decoder_errors.py          # decoder exception hierarchy
 │   ├── generation_engine.py       # complete function-call orchestration
 │   ├── json_to_file.py            # JSON result serialization
 │   ├── loader.py                  # input loading and validation

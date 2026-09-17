@@ -5,7 +5,6 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict
 
 from llm_sdk import Small_LLM_Model
-from src.decoder_errors import DecoderError, NoValidTokenError
 from src.states import (
     END,
     LiteralResult,
@@ -74,7 +73,7 @@ class TokenGeneration(BaseModel):
         while not state.finished:
             candidates = self.literal_candidates(state)
             if not candidates:
-                raise NoValidTokenError(
+                raise RuntimeError(
                     "No token can continue fixed JSON fragment "
                     f"{state.remaining!r}"
                 )
@@ -85,7 +84,7 @@ class TokenGeneration(BaseModel):
                 if token_id < len(logits)
             }
             if not scored:
-                raise NoValidTokenError(
+                raise RuntimeError(
                     "Model logits contain no valid vocabulary token"
                 )
             chosen = max(scored, key=scored.__getitem__)
@@ -135,7 +134,7 @@ class TokenGeneration(BaseModel):
             node = node.children[chosen]
             if chosen == END:
                 if node.value is None:
-                    raise DecoderError("Trie ended without a value")
+                    raise RuntimeError("Trie ended without a value")
                 return node.value
             prompt_ids.append(chosen)
             if output_ids is not None:

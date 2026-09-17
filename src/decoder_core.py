@@ -1,10 +1,5 @@
 """Compatibility exports for the responsibility-specific decoder modules."""
 
-from src.decoder_errors import (
-    DecoderError,
-    NoValidTokenError,
-    UnsupportedTypeError,
-)
 from src.generation_engine import ConstrainedDecoder
 from src.states import (
     END,
@@ -25,13 +20,10 @@ __all__ = [
     "NUMBER_COMPLETE",
     "NUMBER_PREFIX",
     "ConstrainedDecoder",
-    "DecoderError",
     "LiteralResult",
     "LiteralState",
-    "NoValidTokenError",
     "ParameterState",
     "TrieNode",
-    "UnsupportedTypeError",
     "ValueHandler",
     "ValueHandlerRegistry",
     "Vocabulary",
