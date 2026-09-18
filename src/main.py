@@ -14,9 +14,13 @@ from src.prompt import build_call_prompt
 def run() -> int:
     """Select functions and generate schema-constrained arguments."""
     args = parse_args()
-    model = Small_LLM_Model()
     funcs = load_functions(args.functions_definition)
+    if not funcs.func:
+        raise ValueError("No function definition provided.")
+    model = Small_LLM_Model()
     prompts = load_prompts(args.input)
+    if not prompts.prompts:
+        raise ValueError("No prompt provided.")
     vocabulary = Vocabulary.from_sdk(model)
     decoder = ConstrainedDecoder(model=model, vocabulary=vocabulary)
     results: list[JsonResult] = []
