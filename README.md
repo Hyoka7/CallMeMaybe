@@ -231,7 +231,7 @@ Boolean generation limits the choice to the token sequences for `true` and `fals
 
 ### String role handling
 
-String role classification is model-driven rather than based on a hard-coded source/input/text argument-name rule. The four roles are `source`, `regex`, `replacement`, and `ordinary`. Source selection uses a semantic Trie choice; quoted source spans are used as bounded candidates when the request provides them, while unquoted requests use contiguous token spans. Regex selection additionally classifies regex kind:
+String role classification is model-driven rather than based on a hard-coded source/input/text argument-name rule. The four roles are `source`, `regex`, `replacement`, and `ordinary`. Source selection uses a semantic Trie choice over contiguous word-boundary spans from the entire request, regardless of whether other parts of the request are quoted. Regex selection additionally classifies regex kind:
 
 - `characters` for a set of individual characters;
 - `exact` for one literal word or text value;
@@ -324,7 +324,7 @@ Quotes and backslashes can make an otherwise correct model value invalid JSON. T
 
 ### Regex completion
 
-The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, and explicit alternative-boundary handling constrain generation, but the generated value is not rewritten after the fact. Source extraction similarly prefers tokenizer-validated quoted spans so trailing instruction text is not copied into the source argument.
+The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, and explicit alternative-boundary handling constrain generation, but the generated value is not rewritten after the fact. Source extraction selects from contiguous word-boundary spans across the entire request, so subword token boundaries and unrelated quoted text do not restrict the source candidates.
 
 ### Replacement values
 

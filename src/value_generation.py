@@ -22,44 +22,6 @@ NUMBER_COMPLETE = re.compile(
 class ValueGeneration(RegexGeneration):
     """Generate typed values on the shared token stream."""
 
-    @staticmethod
-    def quoted_spans(text: str) -> list[str]:
-        """Find quoted candidate spans for an already classified source."""
-        return [
-            value
-            for _, _, value in ValueGeneration.quoted_spans_with_positions(
-                text
-            )
-        ]
-
-    @staticmethod
-    def quoted_spans_with_positions(
-        text: str,
-    ) -> list[tuple[int, int, str]]:
-        """Find quoted spans while retaining their source positions."""
-        spans: list[tuple[int, int, str]] = []
-        index = 0
-        while index < len(text):
-            if text[index] not in {'"', "'"}:
-                index += 1
-                continue
-            quote = text[index]
-            start = index
-            index += 1
-            value: list[str] = []
-            while index < len(text):
-                if text[index] == "\\" and index + 1 < len(text):
-                    value.append(text[index + 1])
-                    index += 2
-                    continue
-                if text[index] == quote:
-                    spans.append((start, index + 1, "".join(value)))
-                    index += 1
-                    break
-                value.append(text[index])
-                index += 1
-        return spans
-
     def generate_string(
         self,
         prompt: list[int],
@@ -167,28 +129,56 @@ class ValueGeneration(RegexGeneration):
         if not source_ids:
             prompt.append(self.vocabulary.quote)
             return ""
-        quoted = self.quoted_spans(user_input)
-        if quoted:
-            choices = {
-                value for value in quoted
-                if self.model.encode(value)[0].tolist()
-            }
-        else:
-            choices = {
-                self.model.decode(source_ids[start:stop])
-                for start in range(len(source_ids))
-                for stop in range(
-                    start + 1, min(len(source_ids), start + limit) + 1
-                )
-            }
+        units = [
+            match.span()
+            for match in re.finditer(r"\w+|['\"]|[^\w\s'\"]+", user_input)
+        ]
+        quote_counts = {'"': 0, "'": 0}
+        quote_kinds: list[str | None] = [None] * len(units)
+        for index, (start, stop) in enumerate(units):
+            quote = user_input[start:stop]
+            if quote not in {'"', "'"}:
+                continue
+            backslashes = 0
+            escaped_index = start - 1
+            while escaped_index >= 0 and user_input[escaped_index] == "\\":
+                backslashes += 1
+                escaped_index -= 1
+            if backslashes % 2:
+                continue
+            internal_apostrophe = (
+                quote == "'"
+                and start > 0
+                and stop < len(user_input)
+                and user_input[start - 1].isalnum()
+                and user_input[stop].isalnum()
+            )
+            if internal_apostrophe:
+                continue
+            quote_kinds[index] = quote
+            quote_counts[quote] += 1
+        for quote, count in quote_counts.items():
+            if count % 2:
+                raise ValueError(f"Unmatched quote: {quote}")
+        choices: set[str] = set()
+        for start in range(len(units)):
+            for stop in range(start + 1, min(len(units), start + limit) + 1):
+                candidate_quotes = [
+                    quote
+                    for quote in quote_kinds[start:stop]
+                    if quote is not None
+                ]
+                if any(
+                    candidate_quotes.count(quote) % 2
+                    for quote in ('"', "'")
+                ):
+                    continue
+                choices.add(user_input[units[start][0]:units[stop - 1][1]])
         selection_prompt = (
             "Select the exact source text for the source argument. Return "
-            "only the text being operated on, without instructions, operation "
-            "names, replacement text, or explanation. When the request says "
-            "to operate on text in quotes, select only the text inside those "
-            "quotes; do not include the quote character or words after the "
-            "closing quote such as 'with NUMBERS'. For example, in "
-            "'replace matches in \"TEXT\" with VALUE', the source is TEXT.\n"
+            "only the exact substring being operated on, without "
+            "instructions, "
+            "operation names, replacement text, or explanation.\n"
             f"Request: {user_input}\nSource text:"
         )
         value = self.choose_trie_value(selection_prompt, sorted(choices))
