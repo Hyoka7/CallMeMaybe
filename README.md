@@ -89,6 +89,40 @@ make clean
 
 `make lint` runs both flake8 and mypy.
 
+## Example Usage
+
+Run the bundled example data with the default paths:
+
+```bash
+make run
+```
+
+This reads function definitions from `data/input/functions_definition.json`,
+processes the prompts in `data/input/function_calling_tests.json`, and writes
+the generated calls to `data/output/function_calling_results.json`.
+
+To use your own files, provide all three paths explicitly:
+
+```bash
+uv run python -m src \
+  --functions_definition examples/functions.json \
+  --input examples/prompts.json \
+  --output examples/results.json
+```
+
+For example, a prompt asking for an addition can produce:
+
+```json
+{
+  "prompt": "What is the sum of 2 and 3?",
+  "name": "fn_add_numbers",
+  "parameters": {
+    "a": 2,
+    "b": 3
+  }
+}
+```
+
 ## Input and Output
 
 ### Prompt input
