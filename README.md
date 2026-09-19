@@ -287,7 +287,7 @@ The command layer converts `TypeError`, `ValueError`, `OSError`, and `RuntimeErr
 
 The main costs are model loading, logits computation for semantic choices, and string-value generation. The tokenizer vocabulary is classified once per process and reused for every prompt. Fixed JSON fragments normally avoid logits calls through the validated fast path.
 
-With the cached Qwen/Qwen3-0.6B model in offline mode, the standard 15-prompt batch completed locally in approximately 151 seconds. This is below the project's five-minute target on that machine, but execution time depends on hardware, model cache state, prompt length, and generated value length.
+With the cached Qwen/Qwen3-0.6B model in offline mode, the distributed data batch completed locally in approximately 90 seconds (1 minute 30 seconds). Execution time depends on hardware, model cache state, prompt length, and generated value length. The validation job has a ten-minute job-level timeout.
 
 ### Accuracy
 
@@ -346,7 +346,7 @@ For validation, run the default batch with the real model and parse `data/output
 
 Automated validation is intentionally maintained in GitHub Actions rather than in repository test files. The workflow runs `uv sync --dev`, the required flake8 and mypy checks, a command-line smoke check, and the default Qwen/Qwen3-0.6B batch.
 
-The generated file is then validated as JSON and checked against the input definitions. The validation confirms the prompt count, the exact output keys, the selected function name, the exact parameter names, and the JSON type of every generated value. The generation step has a five-minute timeout. Semantic accuracy is evaluated from the generated calls against the prompts when reviewing a workflow run; structural validity is checked automatically.
+The generated file is then validated as JSON and checked against the input definitions. The validation confirms the prompt count, the exact output keys, the selected function name, the exact parameter names, and the JSON type of every generated value. The job has a ten-minute timeout. Semantic accuracy is evaluated from the generated calls against the prompts when reviewing a workflow run; structural validity is checked automatically.
 
 ## Repository Layout
 

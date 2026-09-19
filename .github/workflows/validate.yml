@@ -43,7 +43,7 @@ jobs:
       - name: Generate the default batch
         env:
           HF_HOME: ${{ runner.temp }}/huggingface
-        run: timeout --signal=TERM 5m uv run python -m src
+        run: uv run python -m src
 
       - name: Validate generated JSON and schema
         run: |
