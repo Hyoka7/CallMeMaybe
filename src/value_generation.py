@@ -7,8 +7,8 @@ from typing import cast
 
 import numpy as np
 
-from src.regex_generation import RegexGeneration
 from src.states import END
+from src.token_generation import TokenGeneration
 
 NUMBER_PREFIX = re.compile(
     r"-?(?:(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+-]?[0-9]*)?)?"
@@ -19,21 +19,26 @@ NUMBER_COMPLETE = re.compile(
 )
 
 
-class ValueGeneration(RegexGeneration):
+class ValueGeneration(TokenGeneration):
     """Generate typed values on the shared token stream."""
 
     def generate_string(
         self,
         prompt: list[int],
-        regex_kind: str | None = None,
         user_input: str = "",
+        end_text: str = ",",
         limit: int = 48,
     ) -> str:
         """Generate safe content and always close its JSON quote."""
         content = ""
-        if regex_kind == "characters":
-            content = "["
-            prompt.extend(self.model.encode("[")[0].tolist())
+        virtual_close_ids = [
+            token_id
+            for token_id, suffix in enumerate(
+                self.vocabulary.close_suffix
+            )
+            if suffix is not None
+            and (not suffix or suffix.startswith(end_text))
+        ]
         for _ in range(limit):
             logits = np.asarray(
                 self.model.get_logits_from_input_ids(prompt),
@@ -54,42 +59,26 @@ class ValueGeneration(RegexGeneration):
                 lead_space = np.zeros(len(logits), dtype=bool)
                 lead_space[:copy_size] = self.vocabulary.lead_space[:copy_size]
                 mask &= ~lead_space
-            if regex_kind is not None or not self.literal_incomplete(
-                content, user_input
-            ):
+            can_close = not self.literal_incomplete(content, user_input)
+            if can_close:
                 mask |= close_mask
-            if regex_kind is not None:
-                for token_id in np.flatnonzero(mask):
-                    prefix = self.vocabulary.close_prefix[token_id]
-                    token_text = (
-                        prefix
-                        if prefix is not None
-                        else self.vocabulary.strs[token_id]
-                    )
-                    if regex_kind == "exact":
-                        proposed = content + token_text
-                        candidates = self.extract_literal_candidates(
-                            user_input
-                        )
-                        allowed = (
-                            any(value == proposed for value in candidates)
-                            if prefix is not None
-                            else self.literal_prefix(proposed, user_input)
-                        )
-                    else:
-                        allowed = self.regex_token_allowed(
-                            content,
-                            token_text,
-                            regex_kind,
-                            closing=prefix is not None,
-                        )
-                    if not allowed:
-                        mask[token_id] = False
             if not mask.any():
                 raise RuntimeError(
                     "No token can continue the requested string"
                 )
             chosen = int(np.argmax(np.where(mask, logits, -np.inf)))
+            if can_close:
+                close_ids = [
+                    token_id for token_id in virtual_close_ids
+                    if token_id < len(logits)
+                ]
+                if close_ids:
+                    close_id = max(
+                        close_ids, key=logits.__getitem__
+                    )
+                    if logits[close_id] > logits[chosen]:
+                        prompt.append(self.vocabulary.quote)
+                        return content
             prefix = self.vocabulary.close_prefix[chosen]
             if prefix is not None:
                 token_text = self.vocabulary.strs[chosen]
@@ -101,8 +90,7 @@ class ValueGeneration(RegexGeneration):
                     continue
                 proposed_close = content + prefix
                 if (
-                    regex_kind is None
-                    and prefix
+                    prefix
                     and self.literal_incomplete(proposed_close, user_input)
                 ):
                     prompt.extend(self.model.encode(prefix)[0].tolist())
@@ -117,74 +105,6 @@ class ValueGeneration(RegexGeneration):
             content = proposed
         prompt.append(self.vocabulary.quote)
         return content
-
-    def generate_source(
-        self,
-        prompt: list[int],
-        user_input: str,
-        limit: int = 48,
-    ) -> str:
-        """Select and copy a source span through semantic Trie selection."""
-        source_ids = self.model.encode(user_input)[0].tolist()
-        if not source_ids:
-            prompt.append(self.vocabulary.quote)
-            return ""
-        units = [
-            match.span()
-            for match in re.finditer(r"\w+|['\"]|[^\w\s'\"]+", user_input)
-        ]
-        quote_counts = {'"': 0, "'": 0}
-        quote_kinds: list[str | None] = [None] * len(units)
-        for index, (start, stop) in enumerate(units):
-            quote = user_input[start:stop]
-            if quote not in {'"', "'"}:
-                continue
-            backslashes = 0
-            escaped_index = start - 1
-            while escaped_index >= 0 and user_input[escaped_index] == "\\":
-                backslashes += 1
-                escaped_index -= 1
-            if backslashes % 2:
-                continue
-            internal_apostrophe = (
-                quote == "'"
-                and start > 0
-                and stop < len(user_input)
-                and user_input[start - 1].isalnum()
-                and user_input[stop].isalnum()
-            )
-            if internal_apostrophe:
-                continue
-            quote_kinds[index] = quote
-            quote_counts[quote] += 1
-        for quote, count in quote_counts.items():
-            if count % 2:
-                raise ValueError(f"Unmatched quote: {quote}")
-        choices: set[str] = set()
-        for start in range(len(units)):
-            for stop in range(start + 1, min(len(units), start + limit) + 1):
-                candidate_quotes = [
-                    quote
-                    for quote in quote_kinds[start:stop]
-                    if quote is not None
-                ]
-                if any(
-                    candidate_quotes.count(quote) % 2
-                    for quote in ('"', "'")
-                ):
-                    continue
-                choices.add(user_input[units[start][0]:units[stop - 1][1]])
-        selection_prompt = (
-            "Select the exact source text for the source argument. Return "
-            "only the exact substring being operated on, without "
-            "instructions, "
-            "operation names, replacement text, or explanation.\n"
-            f"Request: {user_input}\nSource text:"
-        )
-        value = self.choose_trie_value(selection_prompt, sorted(choices))
-        prompt.extend(self.model.encode(value)[0].tolist())
-        prompt.append(self.vocabulary.quote)
-        return value
 
     @staticmethod
     def extract_literal_candidates(user_input: str) -> list[str]:

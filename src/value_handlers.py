@@ -73,19 +73,13 @@ class StringHandler(BaseModel):
         is_last: bool,
     ) -> None:
         """Generate a string and append its JSON representation."""
-        del is_last
+        del parameter_name, function
         decoder.emit_literal(prompt, output, " ")
         decoder.emit_literal(prompt, output, '"')
-        role = decoder.string_role(function, parameter_name, user_input)
-        regex_kind = None
-        if role == "source":
-            value = decoder.generate_source(prompt, user_input)
-        else:
-            if role == "regex":
-                regex_kind = decoder.regex_kind(
-                    function, parameter_name, user_input
-                )
-            value = decoder.generate_string(prompt, regex_kind, user_input)
+        end_text = "}" if is_last else ","
+        value = decoder.generate_string(
+            prompt, user_input=user_input, end_text=end_text
+        )
         escaped = json.dumps(value, ensure_ascii=False)[1:-1]
         output.extend(decoder.model.encode(escaped)[0].tolist())
         output.append(decoder.vocabulary.quote)

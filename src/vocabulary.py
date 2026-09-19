@@ -23,6 +23,7 @@ class Vocabulary(BaseModel):
     lead_space: NDArray[np.bool_]
     close_mask: NDArray[np.bool_]
     close_prefix: tuple[str | None, ...]
+    close_suffix: tuple[str | None, ...]
     quote: int
     special_tokens: dict[int, str]
 
@@ -51,6 +52,7 @@ class Vocabulary(BaseModel):
         lead_space = np.zeros(vocab_size, dtype=bool)
         close_mask = np.zeros(vocab_size, dtype=bool)
         close_prefix: list[str | None] = [None] * vocab_size
+        close_suffix: list[str | None] = [None] * vocab_size
         special_ids: dict[int, str] = {}
         for token_id in raw_vocab.values():
             if not isinstance(token_id, int):
@@ -81,6 +83,13 @@ class Vocabulary(BaseModel):
                 ):
                     close_mask[token_id] = True
                     close_prefix[token_id] = prefix
+            if text.startswith('"'):
+                suffix = text[1:]
+                if all(
+                    char.isprintable() and char != "\ufffd"
+                    for char in suffix
+                ):
+                    close_suffix[token_id] = suffix
             number_text = text.removeprefix(" ")
             if number_text and all(
                 char in "-+.eE0123456789" for char in number_text
@@ -110,6 +119,7 @@ class Vocabulary(BaseModel):
             lead_space=lead_space,
             close_mask=close_mask,
             close_prefix=tuple(close_prefix),
+            close_suffix=tuple(close_suffix),
             quote=quote_ids[0],
             special_tokens=special_ids,
         )
