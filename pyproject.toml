@@ -28,7 +28,7 @@ dev = [
 
 [tool.mypy]
 mypy_path = "llm_sdk"
-exclude = ["^\\.venv/", "^llm_sdk/"]
+exclude = ["^(?!src(?:/|$))"]
 
 [[tool.mypy.overrides]]
 module = ["llm_sdk", "llm_sdk.*"]

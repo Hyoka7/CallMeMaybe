@@ -1,2 +1,3 @@
 [flake8]
-exclude = .git,.venv,llm_sdk
+filename = src/*.py
+exclude = .git,.venv

@@ -17,6 +17,7 @@ class Vocabulary(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
     strs: tuple[str, ...]
+    str_values: tuple[str | None, ...]
     str_mask: NDArray[np.bool_]
     int_mask: NDArray[np.bool_]
     num_mask: NDArray[np.bool_]
@@ -25,7 +26,6 @@ class Vocabulary(BaseModel):
     close_prefix: tuple[str | None, ...]
     close_suffix: tuple[str | None, ...]
     quote: int
-    special_tokens: dict[int, str]
 
     @classmethod
     def from_sdk(cls, model: Small_LLM_Model) -> Vocabulary:
@@ -46,6 +46,7 @@ class Vocabulary(BaseModel):
         )
         vocab_size = max(token_ids) + 1
         strings = [""] * vocab_size
+        string_values: list[str | None] = [None] * vocab_size
         string_mask = np.zeros(vocab_size, dtype=bool)
         int_mask = np.zeros(vocab_size, dtype=bool)
         num_mask = np.zeros(vocab_size, dtype=bool)
@@ -53,27 +54,26 @@ class Vocabulary(BaseModel):
         close_mask = np.zeros(vocab_size, dtype=bool)
         close_prefix: list[str | None] = [None] * vocab_size
         close_suffix: list[str | None] = [None] * vocab_size
-        special_ids: dict[int, str] = {}
         for token_id in raw_vocab.values():
             if not isinstance(token_id, int):
                 continue
             text = model.decode([token_id])
             strings[token_id] = text
             lead_space[token_id] = bool(text and text[0].isspace())
-            if text and all(
-                char.isprintable() and char not in {'"', "\\", "\ufffd"}
-                for char in text
-            ):
-                string_mask[token_id] = True
-            elif (
+            try:
+                value = json.loads(f'"{text}"')
+            except json.JSONDecodeError:
+                value = None
+            if (
                 text
-                and any(char in text for char in ('"', "\\"))
+                and isinstance(value, str)
                 and all(
                     char.isprintable() and char != "\ufffd"
-                    for char in text
+                    for char in value
                 )
             ):
-                special_ids[token_id] = text
+                string_mask[token_id] = True
+                string_values[token_id] = value
             if text.endswith('"'):
                 prefix = text[:-1]
                 if all(
@@ -113,6 +113,7 @@ class Vocabulary(BaseModel):
             )
         return cls(
             strs=tuple(strings),
+            str_values=tuple(string_values),
             str_mask=string_mask,
             int_mask=int_mask,
             num_mask=num_mask,
@@ -121,5 +122,4 @@ class Vocabulary(BaseModel):
             close_prefix=tuple(close_prefix),
             close_suffix=tuple(close_suffix),
             quote=quote_ids[0],
-            special_tokens=special_ids,
         )

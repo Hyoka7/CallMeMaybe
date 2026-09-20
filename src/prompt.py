@@ -23,18 +23,21 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         "execute it, explain, or add text outside the call.\n"
         "For text arguments, copy only the requested value exactly, "
         "preserving "
-        "every space, punctuation mark, and quoted character.\n"
-        "Regex: emit only the shortest complete reusable regular expression "
-        "and stop immediately. Put alternative individual characters in one "
-        "character class, use quantifiers for repeated categories, and keep "
-        "an exact word unchanged. Use [0-9]+ for number sequences and "
-        "[aeiouAEIOU] for vowels. Use * for asterisk, not the word. "
-        " Never append matched text, "
-        "source, replacement, explanations, alternatives, or surrounding "
-        "punctuation.\n"
+        "every space, punctuation mark, and quoted character."
+        "MUST NOT LEAVE ANYTHING OUT! if you violate this rule, "
+        "you will be punished!!\n"
+        "Regex/replacement examples:\n"
+        'numbers with NUMBERS -> regex "\\d+", replacement '
+        '"NUMBERS"\n'
+        "vowels with asterisks -> regex "
+        '"a|e|i|o|u|A|E|I|O|U", replacement '
+        '"*"\n'
+        'word cat with dog -> regex "cat", replacement "dog"\n'
+        "Close a regex immediately after the pattern; add nothing else.\n"
         "For numeric arguments, "
         "preserve request order and every sign, digit, decimal point, and "
-        "exponent, including a leading minus sign."
+        "exponent, including a leading minus sign. if type definition is "
+        "'number', '3' must be output as a form '3.0', not '3'. "
     )
     user = "Available functions:\n" + "\n".join(
         f"- {function.name}: {function.description}; arguments: "

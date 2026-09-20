@@ -1,7 +1,6 @@
 """JSON string, number and boolean generation grammars."""
 from __future__ import annotations
 
-import json
 import re
 from typing import cast
 
@@ -48,11 +47,6 @@ class ValueGeneration(TokenGeneration):
             copy_size = min(known_size, len(logits))
             mask = np.zeros(len(logits), dtype=bool)
             mask[:copy_size] = self.vocabulary.str_mask[:copy_size]
-            for token_id, token_text in self.vocabulary.special_tokens.items():
-                if token_id < len(mask) and self.literal_prefix(
-                    content + token_text, user_input
-                ):
-                    mask[token_id] = True
             close_mask = np.zeros(len(logits), dtype=bool)
             close_mask[:copy_size] = self.vocabulary.close_mask[:copy_size]
             if not content:
@@ -81,13 +75,6 @@ class ValueGeneration(TokenGeneration):
                         return content
             prefix = self.vocabulary.close_prefix[chosen]
             if prefix is not None:
-                token_text = self.vocabulary.strs[chosen]
-                if token_text and self.literal_prefix(
-                    content + token_text, user_input
-                ):
-                    self.append_string_fragment(prompt, token_text, chosen)
-                    content += token_text
-                    continue
                 proposed_close = content + prefix
                 if (
                     prefix
@@ -99,10 +86,11 @@ class ValueGeneration(TokenGeneration):
                 content = proposed_close
                 prompt.append(self.vocabulary.quote)
                 return content
-            proposed = content + self.vocabulary.strs[chosen]
-            fragment = self.vocabulary.strs[chosen]
-            self.append_string_fragment(prompt, fragment, chosen)
-            content = proposed
+            fragment = self.vocabulary.str_values[chosen]
+            if fragment is None:
+                raise RuntimeError("Invalid JSON string token")
+            prompt.append(chosen)
+            content += fragment
         prompt.append(self.vocabulary.quote)
         return content
 
@@ -136,16 +124,6 @@ class ValueGeneration(TokenGeneration):
             candidate.startswith(content) and candidate != content
             for candidate in cls.extract_literal_candidates(user_input)
         )
-
-    def append_string_fragment(
-        self, prompt: list[int], fragment: str, token_id: int
-    ) -> None:
-        """Append one semantic string fragment using JSON escaping."""
-        escaped = json.dumps(fragment, ensure_ascii=False)[1:-1]
-        if escaped == fragment:
-            prompt.append(token_id)
-        else:
-            prompt.extend(self.model.encode(escaped)[0].tolist())
 
     def generate_number(
         self, prompt: list[int], end_text: str, limit: int = 24,
@@ -184,9 +162,7 @@ class ValueGeneration(TokenGeneration):
             if not valid:
                 raise RuntimeError("No valid number token")
             candidates = set(valid)
-            if NUMBER_COMPLETE.fullmatch(text) and (
-                not integer or re.fullmatch(r"-?(?:0|[1-9][0-9]*)", text)
-            ):
+            if self.number_can_end(text, integer):
                 candidates.add(END)
             chosen = max(
                 candidates,
@@ -203,6 +179,16 @@ class ValueGeneration(TokenGeneration):
             token_text = self.vocabulary.strs[chosen]
             text += token_text.lstrip() if not text else token_text
         raise RuntimeError("Number value did not terminate")
+
+    @staticmethod
+    def number_can_end(text: str, integer: bool) -> bool:
+        """Check whether a generated numeric value has its required form."""
+        if integer:
+            return re.fullmatch(r"-?(?:0|[1-9][0-9]*)", text) is not None
+        if NUMBER_COMPLETE.fullmatch(text) is None:
+            return False
+        mantissa = re.split(r"[eE]", text, maxsplit=1)[0]
+        return "." in mantissa
 
     def generate_boolean(self, prompt: list[int]) -> list[int]:
         """Choose one JSON boolean literal from model logits."""

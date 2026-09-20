@@ -1,6 +1,9 @@
 {
   "include": ["src", "tests"],
-  "ignore": ["llm_sdk/**"],
+  "ignore": [
+    "llm_sdk/**",
+    "moulinette/**"
+  ],
   "extraPaths": ["llm_sdk"],
   "typeCheckingMode": "basic"
 }
