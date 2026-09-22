@@ -22,17 +22,6 @@ class TokenGeneration(BaseModel):
     model: Small_LLM_Model
     vocabulary: Vocabulary
 
-    def append_tokens(
-        self,
-        prompt: list[int],
-        output: list[int],
-        text: str,
-    ) -> None:
-        """Tokenize text and append it to prompt and generated output."""
-        token_ids = self.model.encode(text)[0].tolist()
-        prompt.extend(token_ids)
-        output.extend(token_ids)
-
     def literal_candidates(
         self, state: LiteralState
     ) -> dict[int, LiteralResult]:
@@ -91,12 +80,6 @@ class TokenGeneration(BaseModel):
             prompt.append(chosen)
             output.append(chosen)
             state = LiteralState(remaining=candidates[chosen].remaining)
-
-    def choose_trie_value(self, prompt: str, choices: list[str]) -> str:
-        """Choose one complete string, allowing terminal prefix nodes."""
-        return self.choose_trie_token_ids(
-            self.model.encode(prompt)[0].tolist(), choices
-        )
 
     def choose_function_name(
         self,

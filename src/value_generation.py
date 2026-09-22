@@ -24,7 +24,6 @@ class ValueGeneration(TokenGeneration):
     def generate_string(
         self,
         prompt: list[int],
-        user_input: str = "",
         end_text: str = ",",
         limit: int = 48,
     ) -> str:
@@ -53,37 +52,24 @@ class ValueGeneration(TokenGeneration):
                 lead_space = np.zeros(len(logits), dtype=bool)
                 lead_space[:copy_size] = self.vocabulary.lead_space[:copy_size]
                 mask &= ~lead_space
-            can_close = not self.literal_incomplete(content, user_input)
-            if can_close:
-                mask |= close_mask
+            mask |= close_mask
             if not mask.any():
                 raise RuntimeError(
                     "No token can continue the requested string"
                 )
             chosen = int(np.argmax(np.where(mask, logits, -np.inf)))
-            if can_close:
-                close_ids = [
-                    token_id for token_id in virtual_close_ids
-                    if token_id < len(logits)
-                ]
-                if close_ids:
-                    close_id = max(
-                        close_ids, key=logits.__getitem__
-                    )
-                    if logits[close_id] > logits[chosen]:
-                        prompt.append(self.vocabulary.quote)
-                        return content
+            close_ids = [
+                token_id for token_id in virtual_close_ids
+                if token_id < len(logits)
+            ]
+            if close_ids:
+                close_id = max(close_ids, key=logits.__getitem__)
+                if logits[close_id] > logits[chosen]:
+                    prompt.append(self.vocabulary.quote)
+                    return content
             prefix = self.vocabulary.close_prefix[chosen]
             if prefix is not None:
-                proposed_close = content + prefix
-                if (
-                    prefix
-                    and self.literal_incomplete(proposed_close, user_input)
-                ):
-                    prompt.extend(self.model.encode(prefix)[0].tolist())
-                    content = proposed_close
-                    continue
-                content = proposed_close
+                content += prefix
                 prompt.append(self.vocabulary.quote)
                 return content
             fragment = self.vocabulary.str_values[chosen]
@@ -93,37 +79,6 @@ class ValueGeneration(TokenGeneration):
             content += fragment
         prompt.append(self.vocabulary.quote)
         return content
-
-    @staticmethod
-    def extract_literal_candidates(user_input: str) -> list[str]:
-        """Extract likely literal argument values from a user request."""
-        quoted = [
-            match[0] or match[1]
-            for match in re.findall(
-                r"'([^']*)'|\"([^\"]*)\"", user_input
-            )
-        ]
-        if quoted:
-            return quoted
-        return re.findall(r"[A-Za-z0-9_]+", user_input)
-
-    @classmethod
-    def literal_prefix(cls, content: str, user_input: str) -> bool:
-        """Check whether content prefixes a requested literal value."""
-        return any(
-            candidate.startswith(content)
-            for candidate in cls.extract_literal_candidates(user_input)
-        )
-
-    @classmethod
-    def literal_incomplete(
-        cls, content: str, user_input: str
-    ) -> bool:
-        """Check if content is a strict prefix of a requested text span."""
-        return any(
-            candidate.startswith(content) and candidate != content
-            for candidate in cls.extract_literal_candidates(user_input)
-        )
 
     def generate_number(
         self, prompt: list[int], end_text: str, limit: int = 24,
