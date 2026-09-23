@@ -163,7 +163,7 @@ The built-in schema types are:
 | Type | Generated JSON value |
 | --- | --- |
 | `string` | A JSON string with required escaping |
-| `number` | A JSON number, including fractional and exponent forms |
+| `number` | A JSON number with a decimal point; an exponent is optional |
 | `integer` | A signed JSON integer without a fraction or exponent |
 | `boolean` | `true` or `false` |
 
@@ -247,25 +247,19 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 ### Typed value generation
 
-`ParameterState` resolves each schema type through `ValueHandlerRegistry`. `generate_parameters()` delegates value generation to the resolved handler, and each built-in handler calls the shared string, number, integer, or boolean generator. Custom types use the same handler-based path after registration.
+`ParameterState` resolves each schema type through the built-in `ValueHandlerRegistry`. `generate_parameters()` delegates value generation to the resolved handler, and each handler calls the shared string, number, integer, or boolean generator.
 
-Before generating a string, the model classifies the parameter as `source`, `regex`, `replacement`, or `ordinary`, using the function purpose, all string argument names, the current argument name, and the request. The selected role dispatches to its dedicated path. String values use vocabulary masks for printable content, leading whitespace, closing quotes, and tokens containing quotes or backslashes. Replacement values use the normal string generator and are not rewritten after generation.
+All string parameters use the same generator. Vocabulary masks allow printable JSON string fragments and closing quotes while rejecting invalid fragments. Leading-space tokens are disabled for the first generated fragment. Tokens containing JSON escapes are decoded into their semantic string value for tracking, while the model-selected token itself remains in the context.
 
-Number generation maintains the text produced so far. Vocabulary construction provides separate `num_mask` and `int_mask` arrays, so candidate tokens are first restricted to numeric or integer characters before grammar checks run. A token is valid only if appending it still matches a possible JSON-number prefix. The value may terminate only when it matches a complete number. Integer generation uses the integer mask and an additional integer-only expression, excluding decimal points and exponents.
+Number generation maintains the text produced so far. Vocabulary construction provides separate `num_mask` and `int_mask` arrays, so candidate tokens are first restricted to numeric or integer characters before grammar checks run. A token is valid only if appending it still matches a possible JSON-number prefix. A `number` may terminate only as a complete value containing a decimal point; an `integer` excludes decimal points and exponents.
 
 Boolean generation limits the choice to the token sequences for `true` and `false`.
 
-### String role handling
+### String generation
 
-String role classification is model-driven rather than based on a hard-coded source/input/text argument-name rule. The four roles are `source`, `regex`, `replacement`, and `ordinary`. Source selection uses a semantic Trie choice over contiguous word-boundary spans from the entire request, regardless of whether other parts of the request are quoted. Regex selection additionally classifies regex kind:
+Every string parameter follows the same token-mask and closing-quote logic. Regex and replacement behavior comes from the compiler prompt and the model's logits; the decoder does not parse, normalize, or rewrite their values after generation.
 
-- `characters` for a set of individual characters;
-- `exact` for one literal word or text value;
-- `general` for repeated categories or other regular-expression structures.
-
-The decoder checks regex syntax with Python's `re` module and stops at a completed reusable pattern. Alternative expressions cannot stop after a trailing `|`. Generated regex and replacement values are not shape-transformed after generation.
-
-Replacement values use the normal string generation path. The prompt asks for the exact text to insert, and the selected value is copied without post-generation rewriting.
+String and numeric generators each allow at most 256 generated tokens. Exceeding the limit raises `RuntimeError` instead of saving a truncated value.
 
 ### Final validation
 
@@ -295,7 +289,7 @@ The decoder is divided into focused modules:
 
 ### Keep the SDK unchanged
 
-The application uses only the SDK's public model construction, encode, decode, tokenizer-path, and logits interfaces. The supplied SDK is not modified, and no private SDK attributes are accessed.
+The application uses only the SDK's documented model construction, encode, decode, tokenizer-path, and logits interfaces. The supplied SDK is not modified, and no internal SDK attributes are accessed.
 
 ### Encode fixed literals directly
 
@@ -311,7 +305,7 @@ The command layer converts `TypeError`, `ValueError`, `OSError`, and `RuntimeErr
 
 The main costs are model loading, logits computation for semantic choices, and string-value generation. The tokenizer vocabulary is classified once per process and reused for every prompt. Fixed JSON fragments avoid logits calls by being encoded directly.
 
-With the cached Qwen/Qwen3-0.6B model in offline mode, the distributed data batch completed locally in approximately 90 seconds (1 minute 30 seconds). Execution time depends on hardware, model cache state, prompt length, and generated value length. The validation job has a ten-minute job-level timeout.
+With the cached Qwen/Qwen3-0.6B model in offline mode, the distributed data batch completed locally in approximately 1 minute 50 seconds. Execution time depends on hardware, model cache state, prompt length, and generated value length. The validation job has a ten-minute job-level timeout.
 
 ### Accuracy
 
@@ -320,11 +314,11 @@ Structural correctness and semantic accuracy are separate:
 - Structural correctness is deterministic within the supported grammar: the decoder restricts function names, JSON structure, parameter names, and primitive types.
 - Semantic accuracy is probabilistic: the 0.6B model may still choose the wrong function or infer an unintended value.
 
-Function descriptions, argument names, the role-classification prompt, and the compiler prompt can influence semantic results. The role classifier is cached per function schema, argument, and request.
+Function descriptions, argument names, the request, and the compiler prompt can influence semantic results.
 
 ### Reliability
 
-Malformed input is rejected before generation. Empty token candidate sets and incomplete values raise explicit decoder errors. Output is parsed and checked again before it is accepted. Files are opened through context managers, and a failed batch is not written as a successful partial result.
+Malformed input is rejected before generation. User requests are limited to 256 tokens; function names and parameter names to 64 tokens each; descriptions to 256 tokens. Empty token candidate sets and incomplete values raise explicit decoder errors. Output is parsed and checked again before it is accepted. Files are opened through context managers, and a failed batch is not written as a successful partial result.
 
 The first run may require downloading model data. A cached model can be used with offline environment settings, but cache availability is outside the decoder's control.
 
@@ -332,7 +326,7 @@ The first run may require downloading model data. A cached model can be used wit
 
 ### Token boundaries
 
-A tokenizer token may contain several characters, leading whitespace, punctuation, or a closing quote together with preceding text. Character-by-character assumptions therefore failed. The solution was to classify decoded vocabulary text and let each state consume complete token strings.
+A tokenizer token may contain several characters, leading whitespace, punctuation, JSON escapes, or a closing quote together with preceding text. The vocabulary therefore stores decoded token text, semantic JSON string values, and quote metadata per complete token instead of assuming character-sized tokens.
 
 ### Function-name prefixes
 
@@ -344,17 +338,13 @@ The decoder must distinguish incomplete prefixes such as `-`, `1.`, and `1e` fro
 
 ### JSON string escaping
 
-Quotes and backslashes can make an otherwise correct model value invalid JSON. The string generator tracks safe, special, and closing tokens separately and re-encodes escaped fragments when required.
+Quotes and backslashes can make an otherwise correct model value invalid JSON. Vocabulary construction accepts tokens that parse as valid JSON string fragments and stores their semantic values separately. This permits escaped quote and backslash tokens without replacing the token chosen by the model.
 
-### Regex completion
+### Regex and replacement values
 
-The model sometimes continued a useful regex with source text, replacement text, or a broad `.*` suffix. Regex intent classification, compile checks, completed-prefix detection, and explicit alternative-boundary handling constrain generation, but the generated value is not rewritten after the fact. Source extraction selects from contiguous word-boundary spans across the entire request, so subword token boundaries and unrelated quoted text do not restrict the source candidates.
+Regex and replacement parameters use ordinary string generation. Short examples in the compiler prompt guide common number, vowel, exact-word, and replacement requests. Accuracy remains model-dependent, and values are not corrected after generation.
 
-### Replacement values
-
-Replacement is one of the four AI-classified string roles. Candidate selection excludes quoted source text and instruction fragments. Descriptive symbol names are constrained before generation, and the selected replacement value is preserved without shape-changing post-processing.
-
-### Five-minute execution target
+### Runtime cost
 
 Obtaining logits for every fixed JSON token made generation too slow because the SDK recomputes the growing context. Encoding fixed literals directly avoids those model calls without modifying the SDK.
 
@@ -399,8 +389,13 @@ The generated file is then validated as JSON and checked against the input defin
 │   └── vocabulary.py              # tokenizer-derived token classes
 ├── Makefile
 ├── pyproject.toml
+├── tokenizer.json                # local tokenizer reference copy
 └── README.md
 ```
+
+### Local tokenizer reference
+
+`tokenizer.json` is a local copy of the Qwen3-0.6B tokenizer definition. It contains the normal vocabulary, token IDs, merge rules, and added special tokens such as `<|im_start|>` and `<|im_end|>`. It is kept for inspecting token boundaries and IDs; the application still obtains the active tokenizer path from `llm_sdk` at runtime.
 
 ## Resources
 
