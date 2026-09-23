@@ -1,7 +1,6 @@
 """Fixed-fragment emission and token-trie selection."""
 from __future__ import annotations
 
-import numpy as np
 from pydantic import BaseModel, ConfigDict
 
 from llm_sdk import Small_LLM_Model
