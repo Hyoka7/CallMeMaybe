@@ -109,14 +109,12 @@ class ValueGeneration(TokenGeneration):
                 for token_id in np.flatnonzero(mask)
                 for token_text in (self.vocabulary.strs[int(token_id)],)
                 if NUMBER_PREFIX.fullmatch(
-                    text + (token_text.lstrip() if not text else token_text)
+                    text + token_text
                 )
                 and (
                     not integer
                     or INTEGER_PREFIX.fullmatch(
-                        text + (
-                            token_text.lstrip() if not text else token_text
-                        )
+                        text + token_text
                     )
                 )
             }
@@ -138,7 +136,7 @@ class ValueGeneration(TokenGeneration):
             output.append(chosen)
             prompt.append(chosen)
             token_text = self.vocabulary.strs[chosen]
-            text += token_text.lstrip() if not text else token_text
+            text += token_text
         raise RuntimeError("Number value did not terminate")
 
     @staticmethod

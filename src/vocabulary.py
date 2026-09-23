@@ -90,7 +90,7 @@ class Vocabulary(BaseModel):
                     for char in suffix
                 ):
                     close_suffix[token_id] = suffix
-            number_text = text.removeprefix(" ")
+            number_text = text
             if number_text and all(
                 char in "-+.eE0123456789" for char in number_text
             ):
