@@ -12,7 +12,6 @@ from src.states import (
 )
 from src.value_generation import ValueGeneration
 from src.value_handlers import (
-    ValueHandler,
     ValueHandlerRegistry,
 )
 
@@ -26,12 +25,6 @@ class ConstrainedDecoder(ValueGeneration):
         """Install built-in handlers while keeping the registry extensible."""
         del _context
         self._value_handlers = ValueHandlerRegistry.default()
-
-    def register_value_handler(
-        self, type_name: str, handler: ValueHandler
-    ) -> None:
-        """Register a schema value handler for future/custom types."""
-        self.value_handlers().register(type_name, handler)
 
     def value_handlers(self) -> ValueHandlerRegistry:
         """Support lightweight instances created with model_construct()."""

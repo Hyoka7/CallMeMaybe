@@ -16,6 +16,8 @@ INTEGER_PREFIX = re.compile(r"-?(?:(?:0|[1-9][0-9]*))?")
 NUMBER_COMPLETE = re.compile(
     r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"
 )
+MAX_STRING_TOKENS = 256
+MAX_NUMBER_TOKENS = 256
 
 
 class ValueGeneration(TokenGeneration):
@@ -25,7 +27,7 @@ class ValueGeneration(TokenGeneration):
         self,
         prompt: list[int],
         end_text: str = ",",
-        limit: int = 48,
+        limit: int = MAX_STRING_TOKENS,
     ) -> str:
         """Generate safe content and always close its JSON quote."""
         content = ""
@@ -77,11 +79,15 @@ class ValueGeneration(TokenGeneration):
                 raise RuntimeError("Invalid JSON string token")
             prompt.append(chosen)
             content += fragment
-        prompt.append(self.vocabulary.quote)
-        return content
+        raise RuntimeError(
+            f"String value exceeded {limit} generated tokens."
+        )
 
     def generate_number(
-        self, prompt: list[int], end_text: str, limit: int = 24,
+        self,
+        prompt: list[int],
+        end_text: str,
+        limit: int = MAX_NUMBER_TOKENS,
         integer: bool = False,
     ) -> list[int]:
         """Generate a terminating JSON number token by token."""

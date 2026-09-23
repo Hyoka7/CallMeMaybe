@@ -7,8 +7,6 @@ from pydantic import BaseModel, ConfigDict
 from llm_sdk import Small_LLM_Model
 from src.states import (
     END,
-    LiteralResult,
-    LiteralState,
     TrieNode,
 )
 from src.vocabulary import Vocabulary
@@ -22,64 +20,16 @@ class TokenGeneration(BaseModel):
     model: Small_LLM_Model
     vocabulary: Vocabulary
 
-    def literal_candidates(
-        self, state: LiteralState
-    ) -> dict[int, LiteralResult]:
-        """Return tokens that advance a fixed-fragment state."""
-        candidates: dict[int, LiteralResult] = {}
-        for token_id, token_text in enumerate(self.vocabulary.strs):
-            if not token_text:
-                continue
-            result = state.consume(token_text)
-            if result.valid:
-                candidates[token_id] = result
-        return candidates
-
     def emit_literal(
         self,
         prompt: list[int],
         output: list[int],
         literal: str,
     ) -> None:
-        """Emit a fixed fragment using tokens valid for its state."""
-        state = LiteralState(remaining=literal)
+        """Encode and append one fixed JSON fragment."""
         encoded = self.model.encode(literal)[0].tolist()
-        fast_state = state
-        fast_valid = True
-        for token_id in encoded:
-            if token_id >= len(self.vocabulary.strs):
-                fast_valid = False
-                break
-            result = fast_state.consume(self.vocabulary.strs[token_id])
-            if not result.valid:
-                fast_valid = False
-                break
-            fast_state = LiteralState(remaining=result.remaining)
-        if fast_valid and fast_state.finished:
-            prompt.extend(encoded)
-            output.extend(encoded)
-            return
-        while not state.finished:
-            candidates = self.literal_candidates(state)
-            if not candidates:
-                raise RuntimeError(
-                    "No token can continue fixed JSON fragment "
-                    f"{state.remaining!r}"
-                )
-            logits = np.asarray(self.model.get_logits_from_input_ids(prompt))
-            scored = {
-                token_id: float(logits[token_id])
-                for token_id in candidates
-                if token_id < len(logits)
-            }
-            if not scored:
-                raise RuntimeError(
-                    "Model logits contain no valid vocabulary token"
-                )
-            chosen = max(scored, key=scored.__getitem__)
-            prompt.append(chosen)
-            output.append(chosen)
-            state = LiteralState(remaining=candidates[chosen].remaining)
+        prompt.extend(encoded)
+        output.extend(encoded)
 
     def choose_function_name(
         self,
