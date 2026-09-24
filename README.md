@@ -249,7 +249,7 @@ At each branch, the model supplies logits, but only Trie children and the valid 
 
 `ParameterState` resolves each schema type through the built-in `ValueHandlerRegistry`. `generate_parameters()` delegates value generation to the resolved handler, and each handler calls the shared string, number, integer, or boolean generator.
 
-All string parameters use the same generator. Vocabulary masks allow printable JSON string fragments and closing quotes while rejecting invalid fragments. Leading-space tokens are disabled for the first generated fragment. Tokens containing JSON escapes are decoded into their semantic string value for tracking, while the model-selected token itself remains in the context.
+All string parameters use the same generator. Vocabulary masks allow printable JSON string fragments and closing quotes while rejecting invalid fragments. Leading-space tokens are allowed, including in the first generated fragment. Tokens containing JSON escapes are decoded into their semantic string value for tracking, while the model-selected token itself remains in the context.
 
 Number generation maintains the text produced so far. Vocabulary construction provides separate `num_mask` and `int_mask` arrays, so candidate tokens are first restricted to numeric or integer characters before grammar checks run. A token is valid only if appending it still matches a possible JSON-number prefix. A `number` may terminate only as a complete value containing a decimal point; an `integer` excludes decimal points and exponents.
 

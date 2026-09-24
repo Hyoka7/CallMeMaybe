@@ -21,7 +21,6 @@ class Vocabulary(BaseModel):
     str_mask: NDArray[np.bool_]
     int_mask: NDArray[np.bool_]
     num_mask: NDArray[np.bool_]
-    lead_space: NDArray[np.bool_]
     close_mask: NDArray[np.bool_]
     close_prefix: tuple[str | None, ...]
     close_suffix: tuple[str | None, ...]
@@ -50,7 +49,6 @@ class Vocabulary(BaseModel):
         string_mask = np.zeros(vocab_size, dtype=bool)
         int_mask = np.zeros(vocab_size, dtype=bool)
         num_mask = np.zeros(vocab_size, dtype=bool)
-        lead_space = np.zeros(vocab_size, dtype=bool)
         close_mask = np.zeros(vocab_size, dtype=bool)
         close_prefix: list[str | None] = [None] * vocab_size
         close_suffix: list[str | None] = [None] * vocab_size
@@ -59,7 +57,6 @@ class Vocabulary(BaseModel):
                 continue
             text = model.decode([token_id])
             strings[token_id] = text
-            lead_space[token_id] = bool(text and text[0].isspace())
             try:
                 value = json.loads(f'"{text}"')
             except json.JSONDecodeError:
@@ -117,7 +114,6 @@ class Vocabulary(BaseModel):
             str_mask=string_mask,
             int_mask=int_mask,
             num_mask=num_mask,
-            lead_space=lead_space,
             close_mask=close_mask,
             close_prefix=tuple(close_prefix),
             close_suffix=tuple(close_suffix),

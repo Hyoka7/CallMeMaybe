@@ -50,10 +50,6 @@ class ValueGeneration(TokenGeneration):
             mask[:copy_size] = self.vocabulary.str_mask[:copy_size]
             close_mask = np.zeros(len(logits), dtype=bool)
             close_mask[:copy_size] = self.vocabulary.close_mask[:copy_size]
-            if not content:
-                lead_space = np.zeros(len(logits), dtype=bool)
-                lead_space[:copy_size] = self.vocabulary.lead_space[:copy_size]
-                mask &= ~lead_space
             mask |= close_mask
             if not mask.any():
                 raise RuntimeError(

@@ -22,8 +22,10 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         "assistant. Select one listed function and emit one JSON call; never "
         "execute it, explain, or add text outside the call.\n"
         "For text arguments, copy only the requested value exactly, "
-        "preserving "
-        "every space, punctuation mark, and quoted character."
+        "preserving every space and punctuation mark inside the "
+        "quotation marks. The enclosing quotation marks only delimit "
+        "the value and must not be included. The source_string begins "
+        "and ends with the exact spaces inside those delimiters."
         "MUST NOT LEAVE ANYTHING OUT! if you violate this rule, "
         "you will be punished!!\n"
         "Regex/replacement examples:\n"
@@ -33,7 +35,8 @@ def build_call_prompt(funcs: JsonInput, user_input: str) -> str:
         '"a|e|i|o|u|A|E|I|O|U", replacement '
         '"*"\n'
         'word cat with dog -> regex "cat", replacement "dog"\n'
-        "Close a regex immediately after the pattern; add nothing else.\n"
+        "For numbers use regex \\d+ exactly once; close immediately "
+        "after + with no | or repeated pattern.\n"
         "For numeric arguments, "
         "preserve request order and every sign, digit, decimal point, and "
         "exponent, including a leading minus sign. if type definition is "
